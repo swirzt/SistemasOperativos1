@@ -11,22 +11,15 @@ int main() {
     printf(">");
     fgets(comando, MAX, stdin);
     int largo = strlen(comando);
-    if (comando[largo - 1] != '&') {
-      if (!fork()) {
-        printf("Ejecutando %s", comando);
-        sleep(5);
-        printf("Fin\n");
-        break;
-      } else {
-        wait(NULL);
-      }
+    comando[largo - 1] = '\0';
+    largo--;
+    if (!fork()) {
+      printf("Ejecutando %s\n", comando);
+      sleep(5);
+      printf("Fin\n");
+      break;
     } else {
-      if (!fork()) {
-        printf("Ejecutando %s", comando);
-        sleep(5);
-        printf("Fin\n");
-        break;
-      }
+      if (comando[largo - 1] != '&') wait(NULL);
     }
   }
   return 0;
