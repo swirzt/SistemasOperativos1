@@ -11,15 +11,13 @@ int main() {
     printf(">");
     fgets(comando, MAX, stdin);
     int largo = strlen(comando);
-    comando[largo - 1] = '\0';
-    largo--;
     if (!fork()) {
-      printf("Ejecutando %s\n", comando);
-      sleep(5);
+      printf("Ejecutando %s", comando);
+      sleep(3);
       printf("Fin\n");
       break;
     } else {
-      if (comando[largo - 1] != '&') wait(NULL);
+      if (comando[largo - 2] != '&') wait(NULL);  // Porque fgets pone \n
     }
   }
   return 0;
