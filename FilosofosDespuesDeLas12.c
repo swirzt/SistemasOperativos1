@@ -10,6 +10,7 @@
 
 pthread_mutex_t tenedor[N_FILOSOFOS];
 sem_t *sem;
+pthread_t filo[N_FILOSOFOS];
 
 void pensar(int i) {
   printf("Filosofo %d pensando...\n", i);
@@ -37,11 +38,17 @@ void *filosofo(void *arg) {
   int i = (*(int *)arg);
   for (;;) {
     sem_wait(sem);
+    printf("%d ya espere\n", i);
     tomar_tenedores(i);
+    printf("%d ya tome\n", i);
     comer(i);
+    printf("%d ya comi\n", i);
     dejar_tenedores(i);
-    sem_post(sem);
+    printf("%d ya deje\n", i);
     pensar(i);
+    printf("%d Ya pense\n", i);
+    sem_post(sem);
+    printf("%d ya avise\n", i);
   }
 }
 
@@ -49,7 +56,6 @@ int main() {
   sem = malloc(sizeof(sem_t));
   sem_init(sem, 0, N_FILOSOFOS - 2);
   int i;
-  pthread_t filo[N_FILOSOFOS];
   for (i = 0; i < N_FILOSOFOS; i++) pthread_mutex_init(&tenedor[i], NULL);
   for (i = 0; i < N_FILOSOFOS; i++)
     pthread_create(&filo[i], NULL, filosofo, (void *)&i);
