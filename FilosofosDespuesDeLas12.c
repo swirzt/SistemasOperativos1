@@ -38,17 +38,17 @@ void *filosofo(void *arg) {
   int i = (*(int *)arg);
   for (;;) {
     sem_wait(sem);
-    printf("%d ya espere\n", i);
+    // printf("%d ya espere\n", i);
     tomar_tenedores(i);
-    printf("%d ya tome\n", i);
+    // printf("%d ya tome\n", i);
     comer(i);
-    printf("%d ya comi\n", i);
+    // printf("%d ya comi\n", i);
     dejar_tenedores(i);
-    printf("%d ya deje\n", i);
+    // printf("%d ya deje\n", i);
     pensar(i);
-    printf("%d Ya pense\n", i);
+    // printf("%d Ya pense\n", i);
     sem_post(sem);
-    printf("%d ya avise\n", i);
+    // printf("%d ya avise\n", i);
   }
 }
 

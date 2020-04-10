@@ -5,16 +5,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "barrera.h"
-
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Estructura para los argumentos */
 struct _argument {
   int tabaco, papel, fosforos;
-  pthread_cond_t tabacoPapel;
-  pthread_cond_t fosforosTabaco;
-  pthread_cond_t papelFosforos;
+  pthread_cond_t avisador;
   sem_t otra_vez;
 };
 
@@ -30,21 +26,21 @@ void agente(void *_args) {
         pthread_mutex_lock(&mutex);
         args->tabaco = 1;
         args->papel = 1;
-        pthread_cond_signal(&args->tabacoPapel);
+        pthread_cond_broadcast(&args->avisador);
         pthread_mutex_unlock(&mutex);
         break;
       case 1:
         pthread_mutex_lock(&mutex);
         args->tabaco = 1;
         args->fosforos = 1;
-        pthread_cond_signal(&args->fosforosTabaco);
+        pthread_cond_broadcast(&args->avisador);
         pthread_mutex_unlock(&mutex);
         break;
       case 2:
         pthread_mutex_lock(&mutex);
         args->papel = 1;
         args->fosforos = 1;
-        pthread_cond_signal(&args->papelFosforos);
+        pthread_cond_broadcast(&args->avisador);
         pthread_mutex_unlock(&mutex);
         break;
     }
@@ -63,9 +59,8 @@ void *fumador1(void *_arg) {
   printf("Fumador 1: Hola!\n");
   for (;;) {
     pthread_mutex_lock(&mutex);
-    while (!(args->tabaco && args->papel)) {
-      pthread_cond_wait(&args->tabacoPapel, &mutex);
-    }
+    while (!(args->tabaco && args->papel))
+      pthread_cond_wait(&args->avisador, &mutex);
     args->tabaco = 0;
     args->papel = 0;
     fumar(1);
@@ -81,9 +76,8 @@ void *fumador2(void *_arg) {
   printf("Fumador 2: Hola!\n");
   for (;;) {
     pthread_mutex_lock(&mutex);
-    while (!(args->tabaco && args->fosforos)) {
-      pthread_cond_wait(&args->fosforosTabaco, &mutex);
-    }
+    while (!(args->tabaco && args->fosforos))
+      pthread_cond_wait(&args->avisador, &mutex);
     args->tabaco = 0;
     args->fosforos = 0;
     fumar(2);
@@ -99,9 +93,8 @@ void *fumador3(void *_arg) {
   printf("Fumador 3: Hola!\n");
   for (;;) {
     pthread_mutex_lock(&mutex);
-    while (!(args->fosforos && args->papel)) {
-      pthread_cond_wait(&args->papelFosforos, &mutex);
-    }
+    while (!(args->fosforos && args->papel))
+      pthread_cond_wait(&args->avisador, &mutex);
     args->fosforos = 0;
     args->papel = 0;
     fumar(3);
@@ -119,10 +112,7 @@ int main() {
   args_t *args = malloc(sizeof(args_t));
   /* Se inicializan los semáforos */
   sem_init(&args->otra_vez, 0, 1);
-  pthread_cond_init(&args->fosforosTabaco, NULL);
-  pthread_cond_init(&args->papelFosforos, NULL);
-  pthread_cond_init(&args->tabacoPapel, NULL);
-  args->fosforos = 0;
+  pthread_cond_init(&args->avisador, NULL);
   args->papel = 0;
   args->tabaco = 0;
   /************/
