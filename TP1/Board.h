@@ -16,7 +16,7 @@ typedef struct board_ {
   size_t m;  // Filas
 } * board_t;
 
-#define DIS1(n, y) n == 0 ? y : n - 1
+#define DIS1(n, y) n == 0 ? y - 1 : n - 1
 #define AUM1(n, y) (n + 1) % y
 
 board_t board_init(size_t m, size_t n) {
@@ -47,6 +47,13 @@ void board_del(board_t tablero) {
   for (size_t i = 0; i < m; i++) free(tablero->tab[i]);
   free(tablero->tab);
   free(tablero);
+}
+
+void board_print(size_t m, size_t n, tupla** tab) {
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) printf("%c", tab[i][j].estado);
+    printf("\n");
+  }
 }
 
 #endif
