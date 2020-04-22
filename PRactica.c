@@ -9,31 +9,23 @@
 // Solucion, hacer que el mutex sea una sola instruccion
 #define n 100
 int cuentas[n];
-
-pthread_mutex_t locks[n][n] = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t banquero = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t locks[n] = PTHREAD_MUTEX_INITIALIZER;
 
 int transferir(int cuenta_fuente, int cuenta_destino, int cantidad) {
   int rta;
-  int x, y;
-  if (cuenta_destino >= cuenta_fuente) {
-    x = cuenta_fuente;
-    y = cuenta_destino;
-  } else {
-    x = cuenta_destino;
-    y = cuenta_fuente;
-  }
-  // pthread_mutex_lock(locks[cuenta_fuente]);
-  // pthread_mutex_lock(locks[cuenta_destino]);
-  pthread_mutex_lock(&locks[x][y]);
+  pthread_mutex_lock(&banquero);
+  pthread_mutex_lock(&locks[cuenta_fuente]);
+  pthread_mutex_lock(&locks[cuenta_destino]);
+  pthread_mutex_unlock(&banquero);
   if (cuentas[cuenta_fuente] >= cantidad) {
     rta = 0;
     cuentas[cuenta_fuente] -= cantidad;
     cuentas[cuenta_destino] += cantidad;
   } else
     rta = 1;
-  // pthread_mutex_unlock(locks[cuenta_fuente]);
-  // pthread_mutex_unlock(locks[cuenta_destino]);
-  pthread_mutex_unlock(&locks[x][y]);
+  pthread_mutex_unlock(&locks[cuenta_fuente]);
+  pthread_mutex_unlock(&locks[cuenta_destino]);
   return rta;
 }
 
