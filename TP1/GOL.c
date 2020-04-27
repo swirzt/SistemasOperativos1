@@ -147,7 +147,8 @@ void* hiloworker(void* tabinter) {
 }
 
 int main(int argc, char* argv[]) {
-  int cantProcesos = get_nprocs();
+  int cantProcesos = atoi(argv[2]);
+  if (!cantProcesos) cantProcesos = get_nprocs();
   barrier_init(&barrera, cantProcesos);
   jueguito = loadGame(argv[1]);
   size_t cic = jueguito->cycles;
