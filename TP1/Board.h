@@ -5,10 +5,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ALIVE 'O'
+#define DEAD 'X'
+
 typedef struct _tupla {
   char estado;
   int futuro;
 } tupla;
+
+typedef struct intervalo_ {
+  size_t inicio;
+  size_t fin;
+} intervalo;
 
 typedef struct board_ {
   tupla** tab;
@@ -16,44 +24,25 @@ typedef struct board_ {
   size_t m;  // Filas
 } * board_t;
 
-#define DIS1(n, y) n == 0 ? y - 1 : n - 1
-#define AUM1(n, y) (n + 1) % y
+typedef struct tablero_hilo {
+  tupla** tab;
+  intervalo intN;  // Intervalo de columnas
+  intervalo intM;  // Intervalo de filas
+  unsigned int ciclos;
+  size_t m;
+  size_t n;
+} * tablero_h;
 
-board_t board_init(size_t m, size_t n) {
-  board_t tablero = malloc(sizeof(struct board_));
-  tablero->n = n;
-  tablero->m = m;
-  tablero->tab = malloc(sizeof(tupla*) * m);
-  return tablero;
-}
+// Inicializa el tablero
+board_t board_init(size_t m, size_t n);
 
-void board_fill(FILE* archivo, board_t tablero) {
-  size_t n = tablero->n;
-  size_t m = tablero->m;
-  char* temp = malloc(sizeof(char) * (n + 1));
-  for (size_t i = 0; i < m; i++) {
-    fscanf(archivo, "%s", temp);
-    tablero->tab[i] = malloc(sizeof(tupla) * n);
-    for (int j = 0; j < n; j++) {
-      tablero->tab[i][j].estado = temp[j];
-      tablero->tab[i][j].futuro = 0;
-    }
-  }
-  free(temp);
-}
+// Llena un tablero segun un archivo dado
+void board_fill(FILE* archivo, board_t tablero);
 
-void board_del(board_t tablero) {
-  size_t m = tablero->m;
-  for (size_t i = 0; i < m; i++) free(tablero->tab[i]);
-  free(tablero->tab);
-  free(tablero);
-}
+// Borra un tablero
+void board_del(board_t tablero);
 
-void board_print(size_t m, size_t n, tupla** tab) {
-  for (int i = 0; i < m; i++) {
-    for (int j = 0; j < n; j++) printf("%c", tab[i][j].estado);
-    printf("\n");
-  }
-}
+// Imprime un tablero en pantalla
+void board_print(size_t m, size_t n, tupla** tab);
 
 #endif

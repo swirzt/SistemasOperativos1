@@ -1,7 +1,6 @@
-#include "Game.h"
+#include <stdio.h>
 
-int main() {
-  game_t* jueguito = loadGame("Ejemplo.game");
-  writeBoard(jueguito->board, "salida.txt");
+int main(int argc, char* argv[]) {
+  printf("%d\n", argc);
   return 0;
 }

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define N_FILOSOFOS 5
+#define N_FILOSOFOS 9
 #define ESPERA 5000000
 
 pthread_mutex_t tenedor[N_FILOSOFOS];
@@ -54,7 +54,7 @@ void *filosofo(void *arg) {
 
 int main() {
   sem = malloc(sizeof(sem_t));
-  sem_init(sem, 0, N_FILOSOFOS - 2);
+  sem_init(sem, 0, N_FILOSOFOS - 1);
   int i;
   for (i = 0; i < N_FILOSOFOS; i++) pthread_mutex_init(&tenedor[i], NULL);
   for (i = 0; i < N_FILOSOFOS; i++)

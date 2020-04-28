@@ -1,10 +1,12 @@
+#ifndef COLA
+#define COLA
+
 #include <pthread.h>
 #include <stdlib.h>
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
 /* Definición de la estructura y sinónimo de tipo.*/
 struct cond_barrier {
+  pthread_mutex_t mutex;
   unsigned int objetivo;
   unsigned int actual;
   pthread_cond_t cond;
@@ -18,26 +20,12 @@ typedef struct cond_barrier barrier_t;
 
 /* Creación de una barrera de condición, tomando como argumento la cantidad de
 hilos que se van a esperar*/
-int barrier_init(barrier_t *barr, unsigned int count) {
-  barr->objetivo = count;
-  barr->actual = 0;
-  pthread_cond_init(&barr->cond, NULL);
-  return count;
-}
+int barrier_init(barrier_t *barr, unsigned int count);
 
 /* Función *bloqueante* para esperar a los demás hilos */
-void barrier_wait(barrier_t *barr) {
-  pthread_mutex_lock(&mutex);
-  barr->actual++;
-  if (barr->actual == barr->objetivo){
-    barr->actual = 0;
-    pthread_cond_broadcast(&barr->cond);
-  }else
-    pthread_cond_wait(&barr->cond, &mutex);
-  pthread_mutex_unlock(&mutex);
-}
+void barrier_wait(barrier_t *barr);
 
 /* Eliminación de la barrera */
-void barrier_destroy(barrier_t *barr) {
-  free(barr);
-}
+void barrier_destroy(barrier_t *barr);
+
+#endif
