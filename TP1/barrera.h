@@ -1,5 +1,5 @@
-#ifndef COLA
-#define COLA
+#ifndef BARRERA
+#define BARRERA
 
 #include <pthread.h>
 #include <stdlib.h>

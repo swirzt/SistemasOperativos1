@@ -1,8 +1,5 @@
 #include "Game.h"
 
-#include <sys/sysinfo.h>
-#include <unistd.h>
-
 #include "Board.h"
 
 #define C(x) x == ALIVE ? DEAD : ALIVE
@@ -13,14 +10,14 @@
 barrier_t barrera;
 
 int destino(tablero_h tablero, int i, int j) {
-  int limitex = tablero->m;
-  int limitey = tablero->n;
+  int limitex = tablero->n;
+  int limitey = tablero->m;
   size_t vecinosVivos = 0;
   //-------------------
   if (tablero->tab[DIS1(i, limitey)][DIS1(j, limitex)].estado == ALIVE)
     vecinosVivos++;
   if (tablero->tab[DIS1(i, limitey)][j].estado == ALIVE) vecinosVivos++;
-  if (tablero->tab[DIS1(i, limitey)][AUM1(j, limitex)].estado == ALIVE)
+  if (tablero->tab[DIS1(i, limitey)][(j + 1) % limitex].estado == ALIVE)
     vecinosVivos++;
   if (tablero->tab[i][DIS1(j, limitex)].estado == ALIVE) vecinosVivos++;
   if (tablero->tab[i][AUM1(j, limitex)].estado == ALIVE) vecinosVivos++;
@@ -106,7 +103,13 @@ tablero_h* calcular_intervalos(board_t tablero, size_t procs, int ciclos) {
       conjuntosTablero[i]->n = tablero->m;
     }
   }
+  free(intervalos);
   return conjuntosTablero;
+}
+
+void libera_intervalos(tablero_h* conjunto, size_t procs) {
+  for (size_t i = 0; i < procs; i++) free(conjunto[i]);
+  free(conjunto);
 }
 
 void* hiloworker(void* tabinter) {
@@ -145,7 +148,8 @@ void writeBoard(board_t board, const char* filename) {
   fclose(arch);
 }
 
-board_t congwayGoL(game_t* juego, unsigned int cic, const int nuproc) {
+board_t congwayGoL(game_t* juego, const int nuproc) {
+  size_t cic = juego->cycles;
   tablero_h* tableroPorHilo = calcular_intervalos(juego->board, nuproc, cic);
   barrier_init(&barrera, nuproc);
   pthread_t trabajadores[nuproc];
@@ -153,5 +157,6 @@ board_t congwayGoL(game_t* juego, unsigned int cic, const int nuproc) {
     pthread_create(&trabajadores[i], NULL, hiloworker,
                    (void*)(tableroPorHilo[i]));
   for (int i = 0; i < nuproc; i++) pthread_join(trabajadores[i], NULL);
+  libera_intervalos(tableroPorHilo, nuproc);
   return juego->board;
 }

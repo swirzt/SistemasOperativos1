@@ -2,6 +2,8 @@
 #define GAME
 #include "Board.h"
 #include "barrera.h"
+#include <sys/sysinfo.h>
+#include <unistd.h>
 
 /******************************************************************************/
 /* Representamos las células vivas como 'O' y las muertas como 'X' */
@@ -25,6 +27,6 @@ void writeBoard(board_t board, const char *filename);
 
 /* Simulamos el Juego de la Vida de Conway con tablero 'board' la cantidad de
 ciclos indicados en 'cycles' en 'nuprocs' unidades de procesamiento*/
-board_t congwayGoL(game_t* board, unsigned int cycles, const int nuproc);
+board_t congwayGoL(game_t* board, const int nuproc);
 
 #endif

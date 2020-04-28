@@ -1,5 +1,5 @@
 CC=gcc
-FLAGS=-std=c99 -O
+FLAGS=-std=c99 -O -g
 
 all: simulador
 
@@ -16,3 +16,7 @@ simulador: GOL.c barrera.o Board.o Game.o
 	$(CC) -o simulador GOL.c barrera.o Board.o Game.o -lpthread $(FLAGS)
 
 clean:
+	rm -rf barrera.o
+	rm -rf Board.o
+	rm -rf Game.o
+	rm -rf simulador

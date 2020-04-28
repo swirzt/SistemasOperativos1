@@ -14,7 +14,7 @@ void board_fill(FILE *archivo, board_t tablero) {
   char *temp = malloc(sizeof(char) * (n + 1));
   for (size_t i = 0; i < m; i++) {
     fscanf(archivo, "%s", temp);
-    tablero->tab[i] = malloc(sizeof(tupla) * n);
+    tablero->tab[i] = malloc(sizeof(tupla) * (n + 1));
     for (int j = 0; j < n; j++) {
       tablero->tab[i][j].estado = temp[j];
       tablero->tab[i][j].futuro = 0;
