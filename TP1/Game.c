@@ -99,8 +99,8 @@ tablero_h* calcular_intervalos(board_t tablero, size_t procs, int ciclos) {
       conjuntosTablero[i]->intM.inicio = 0;
       conjuntosTablero[i]->intM.fin = tablero->m;
       conjuntosTablero[i]->ciclos = ciclos;
-      conjuntosTablero[i]->m = tablero->n;
-      conjuntosTablero[i]->n = tablero->m;
+      conjuntosTablero[i]->m = tablero->m;
+      conjuntosTablero[i]->n = tablero->n;
     }
   }
   free(intervalos);

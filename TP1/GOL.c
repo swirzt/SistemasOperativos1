@@ -10,7 +10,7 @@ char* transformaFinal(char* entrada) {
 }
 
 int main(int argc, char* argv[]) {
-  int cantHilos = get_nprocs();
+  int cantHilos = get_nprocs();  // PREGUNTAR
   game_t* jueguito = loadGame(argv[1]);
   board_t tablero = congwayGoL(jueguito, cantHilos);
   char* guardado = transformaFinal(argv[1]);
