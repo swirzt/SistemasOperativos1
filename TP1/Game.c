@@ -107,7 +107,7 @@ tablero_h* calcular_intervalos(board_t tablero, size_t procs, int ciclos) {
   return conjuntosTablero;
 }
 
-void libera_intervalos(tablero_h* conjunto, size_t procs) {
+void libera_tablero_h(tablero_h* conjunto, size_t procs) {
   for (size_t i = 0; i < procs; i++) free(conjunto[i]);
   free(conjunto);
 }
@@ -157,5 +157,5 @@ void congwayGoL(game_t* juego, const int nuproc) {
     pthread_create(&trabajadores[i], NULL, hiloworker,
                    (void*)(tableroPorHilo[i]));
   for (int i = 0; i < nuproc; i++) pthread_join(trabajadores[i], NULL);
-  libera_intervalos(tableroPorHilo, nuproc);
+  libera_tablero_h(tableroPorHilo, nuproc);
 }

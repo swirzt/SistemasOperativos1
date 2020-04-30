@@ -17,6 +17,11 @@ typedef struct _game {
   unsigned int cycles;
 } game_t;
 
+typedef struct intervalo_ {
+  size_t inicio;
+  size_t fin;
+} intervalo;
+
 typedef struct tablero_hilo {
   tupla** tab;
   intervalo intN;  // Intervalo de columnas
@@ -61,8 +66,8 @@ game_t *loadGame(const char *filename);
 /* Guardamos el tablero 'board' en el archivo 'filename' */
 void writeBoard(board_t board, const char *filename);
 
-/* Simulamos el Juego de la Vida de Conway con tablero 'board' la cantidad de
-ciclos indicados en 'cycles' en 'nuprocs' unidades de procesamiento*/
-void congwayGoL(game_t* board, const int nuproc);
+/* Simulamos el Juego de la Vida de Conway con game_t* juego
+en 'nuprocs' unidades de procesamiento*/
+void congwayGoL(game_t* juego, const int nuproc);
 
 #endif

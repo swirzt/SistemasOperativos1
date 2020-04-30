@@ -10,11 +10,6 @@ typedef struct _tupla {
   int futuro;
 } tupla;
 
-typedef struct intervalo_ {
-  size_t inicio;
-  size_t fin;
-} intervalo;
-
 typedef struct board_ {
   tupla** tab;
   size_t n;  // Columnas
