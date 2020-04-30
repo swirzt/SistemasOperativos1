@@ -5,9 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ALIVE 'O'
-#define DEAD 'X'
-
 typedef struct _tupla {
   char estado;
   int futuro;
@@ -23,15 +20,6 @@ typedef struct board_ {
   size_t n;  // Columnas
   size_t m;  // Filas
 } * board_t;
-
-typedef struct tablero_hilo {
-  tupla** tab;
-  intervalo intN;  // Intervalo de columnas
-  intervalo intM;  // Intervalo de filas
-  unsigned int ciclos;
-  size_t m;
-  size_t n;
-} * tablero_h;
 
 // Inicializa el tablero
 board_t board_init(size_t m, size_t n);

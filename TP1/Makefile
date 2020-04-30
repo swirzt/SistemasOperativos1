@@ -1,5 +1,5 @@
 CC=gcc
-FLAGS=-std=c99 -O -g
+FLAGS= -std=c99 -O3 -lpthread -Wno-unused-result
 
 all: simulador
 
@@ -13,10 +13,8 @@ Game.o: Game.c Game.h
 	$(CC) -c Game.c $(FLAGS)
 
 simulador: GOL.c barrera.o Board.o Game.o
-	$(CC) -o simulador GOL.c barrera.o Board.o Game.o -lpthread $(FLAGS)
+	$(CC) -o simulador GOL.c barrera.o Board.o Game.o $(FLAGS)
 
 clean:
-	rm -rf barrera.o
-	rm -rf Board.o
-	rm -rf Game.o
+	rm -rf *.o
 	rm -rf simulador

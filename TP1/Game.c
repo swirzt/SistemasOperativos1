@@ -148,7 +148,7 @@ void writeBoard(board_t board, const char* filename) {
   fclose(arch);
 }
 
-board_t congwayGoL(game_t* juego, const int nuproc) {
+void congwayGoL(game_t* juego, const int nuproc) {
   size_t cic = juego->cycles;
   tablero_h* tableroPorHilo = calcular_intervalos(juego->board, nuproc, cic);
   barrier_init(&barrera, nuproc);
@@ -158,5 +158,4 @@ board_t congwayGoL(game_t* juego, const int nuproc) {
                    (void*)(tableroPorHilo[i]));
   for (int i = 0; i < nuproc; i++) pthread_join(trabajadores[i], NULL);
   libera_intervalos(tableroPorHilo, nuproc);
-  return juego->board;
 }

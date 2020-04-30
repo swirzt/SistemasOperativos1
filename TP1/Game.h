@@ -17,7 +17,30 @@ typedef struct _game {
   unsigned int cycles;
 } game_t;
 
+typedef struct tablero_hilo {
+  tupla** tab;
+  intervalo intN;  // Intervalo de columnas
+  intervalo intM;  // Intervalo de filas
+  unsigned int ciclos;
+  size_t m;
+  size_t n;
+} * tablero_h;
+
 /******************************************************************************/
+
+int destino(tablero_h tablero, int i, int j);
+
+void agente_check(tablero_h tablero);
+
+void agente_update(tablero_h tablero);
+
+void dividir(size_t max, size_t procs, intervalo* intervalos);
+
+tablero_h* calcular_intervalos(board_t tablero, size_t procs, int ciclos);
+
+void libera_intervalos(tablero_h* conjunto, size_t procs);
+
+void* hiloworker(void* tabinter);
 
 /* Cargamos el juego desde un archivo */
 game_t *loadGame(const char *filename);
@@ -27,6 +50,6 @@ void writeBoard(board_t board, const char *filename);
 
 /* Simulamos el Juego de la Vida de Conway con tablero 'board' la cantidad de
 ciclos indicados en 'cycles' en 'nuprocs' unidades de procesamiento*/
-board_t congwayGoL(game_t* board, const int nuproc);
+void congwayGoL(game_t* board, const int nuproc);
 
 #endif
