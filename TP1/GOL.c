@@ -18,5 +18,7 @@ int main(int argc, char* argv[]) {
   char* guardado = transformaFinal(argv[1]);
   writeBoard(juego->board, guardado);
   free(guardado);
+  board_del(juego->board);
+  free(juego);
   return 0;
 }
