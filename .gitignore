@@ -6,3 +6,6 @@ TP1/Board.o
 TP1/Game.o
 TP1/simulador
 TP1/*.final
+soquete
+Cliente
+Servidor
