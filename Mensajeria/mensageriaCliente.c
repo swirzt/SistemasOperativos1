@@ -25,27 +25,24 @@
   en el archivo RemoteServer.c. Se utiliza de la siguiente manera:
   $cliente IP port
  */
-int esperar = 1;
 int sock;
+pthread_t thread[2];
+
 void error(char *msg) { exit((perror(msg), 1)); }
 
 void sigMain(int sig) {
   shutdown(sock, 2);
   close(sock);
+  sleep(1);
 }
 
-void sigHijos(int sig) {
-  esperar = 0;
-  exit(0);
-}
+void sigHijos(int sig) { pthread_exit(NULL); }
 
 void *enviar(void *_arg) {
-  signal(SIGINT, sigHijos);
-  printf("Entre a enviar\n");
+  signal(42, sigHijos);
   int socket = *(int *)_arg;
-  printf("Conectado!\n");
   char buf[1024];
-  for (;;) {
+  while (1) {
     gets(buf);
     if (send(socket, buf, sizeof(buf), 0) == -1) {
       break;
@@ -55,27 +52,22 @@ void *enviar(void *_arg) {
 }
 
 void *recibir(void *_arg) {
-  signal(SIGINT, sigHijos);
-  printf("Entre a recibir\n");
   int socket = *(int *)_arg;
   char buf[1024];
-  for (;;) {
-    if (recv(socket, buf, sizeof(buf), 0) == 0) break;
+  while (1) {
+    if (recv(socket, buf, sizeof(buf), 0) == 0) {
+      pthread_kill(thread[0], 42);
+      break;
+    }
     printf("Servidor: %s\n", buf);
   }
   return NULL;
 }
 
 int main(int argc, char **argv) {
-  pthread_attr_t attr;
-  /* Creamos los atributos para los hilos.*/
-  pthread_attr_init(&attr);
-  /* Hilos que no van a ser *joinables* */
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
+  signal(SIGINT, sigMain);
   char buf[1024];
   struct addrinfo *resultado;
-  pthread_t thread[2];
   /*Chequeamos mínimamente que los argumentos fueron pasados*/
   if (argc != 3) {
     fprintf(stderr, "El uso es \'%s IP port\'", argv[0]);
@@ -100,11 +92,11 @@ int main(int argc, char **argv) {
   pthread_create(&thread[0], NULL, enviar, (void *)&sock);
   pthread_create(&thread[1], NULL, recibir, (void *)&sock);
   printf("La conexión fue un éxito!\n");
-  signal(SIGINT, sigMain);
-  while (esperar)
-    ;
+  pthread_join(thread[0], NULL);
+  pthread_join(thread[1], NULL);
   /* Cerramos :D!*/
   freeaddrinfo(resultado);
-  free(resultado);
+  close(sock);
+  printf("Eso es todo amigos\n");
   return 0;
 }

@@ -20,7 +20,6 @@ servidor */
 
 void *enviar(void *arg);
 void *recibir(void *arg);
-int esperar = 1;
 int sock, *soclient;
 struct sockaddr_in servidor, clientedir;
 socklen_t clientelen;
@@ -33,24 +32,12 @@ void sigMain(int sig) {
   close(sock);
 }
 
-void sigHijos(int sig) {
-  esperar = 0;
-  exit(0);
-}
+void sigHijos(int sig) { pthread_exit(NULL); }
 
 int main(int argc, char **argv) {
-  pthread_attr_t attr;
-  /* Creamos los atributos para los hilos.*/
-  pthread_attr_init(&attr);
-  /* Hilos que no van a ser *joinables* */
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
   if (argc <= 1) error("Faltan argumentos");
-  // Iniciamos el mutex
-
   /* Creamos el socket */
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) error("Socket Init");
-
   /* Creamos a la dirección del servidor.*/
   servidor.sin_family = AF_INET;         /* Internet */
   servidor.sin_addr.s_addr = INADDR_ANY; /**/
@@ -59,7 +46,6 @@ int main(int argc, char **argv) {
   /* Inicializamos el socket */
   if (bind(sock, (struct sockaddr *)&servidor, sizeof(servidor)))
     error("Error en el bind");
-
   printf("Binding successful, and listening on %s\n", argv[1]);
 
   /* Ya podemos aceptar conexiones */
@@ -68,6 +54,7 @@ int main(int argc, char **argv) {
   /* Comenzamos con el bucle infinito*/
   /* Pedimos memoria para el socket */
   soclient = malloc(sizeof(int));
+
   /* Now we can accept connections as they come*/
   clientelen = sizeof(clientedir);
   if ((*soclient = accept(sock, (struct sockaddr *)&clientedir, &clientelen)) ==
@@ -78,16 +65,17 @@ int main(int argc, char **argv) {
   pthread_create(&thread[0], NULL, enviar, (void *)soclient);
   pthread_create(&thread[1], NULL, recibir, (void *)soclient);
   signal(SIGINT, sigMain);
-  while (esperar)
-    ;
+  pthread_join(thread[0], NULL);
+  pthread_join(thread[1], NULL);
   /* Código muerto */
   free(soclient);
-
+  close(sock);
+  printf("Eso es todo amigos\n");
   return 0;
 }
 
 void *enviar(void *_arg) {
-  signal(SIGINT, sigHijos);
+  signal(42, sigHijos);
   int socket = *(int *)_arg;
   char buf[1024];
   while (1) {
@@ -100,11 +88,15 @@ void *enviar(void *_arg) {
 }
 
 void *recibir(void *_arg) {
-  signal(SIGINT, sigHijos);
+  // signal(42, sigHijos);
   int socket = *(int *)_arg;
   char buf[1024];
   while (1) {
-    if (recv(socket, buf, sizeof(buf), 0) == 0) break;
+    if (recv(socket, buf, sizeof(buf), 0) == 0) {
+      pthread_kill(thread[0], 42);
+      // habilitado = 0;
+      break;
+    }
     printf("Cliente[%ld]: %s\n", pthread_self(), buf);
   }
   return NULL;
