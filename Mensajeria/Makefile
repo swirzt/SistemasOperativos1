@@ -1,5 +1,5 @@
 CC=gcc
-FLAGS= -O3 -lpthread -Wno-unused-result -g
+FLAGS= -O3 -lpthread -Wno-unused-result
 
 all: Servidor Cliente
 

@@ -33,7 +33,6 @@ void error(char *msg) { exit((perror(msg), 1)); }
 void sigMain(int sig) {
   shutdown(sock, 2);
   close(sock);
-  sleep(1);
 }
 
 void sigHijos(int sig) { pthread_exit(NULL); }
@@ -43,7 +42,7 @@ void *enviar(void *_arg) {
   int socket = *(int *)_arg;
   char buf[1024];
   while (1) {
-    gets(buf);
+    fgets(buf, sizeof(buf), stdin);
     if (send(socket, buf, sizeof(buf), 0) == -1) {
       break;
     }
@@ -59,7 +58,7 @@ void *recibir(void *_arg) {
       pthread_kill(thread[0], 42);
       break;
     }
-    printf("Servidor: %s\n", buf);
+    printf("Servidor: %s", buf);
   }
   return NULL;
 }
@@ -70,7 +69,7 @@ int main(int argc, char **argv) {
   struct addrinfo *resultado;
   /*Chequeamos mínimamente que los argumentos fueron pasados*/
   if (argc != 3) {
-    fprintf(stderr, "El uso es \'%s IP port\'", argv[0]);
+    fprintf(stderr, "El uso es \'%s IP port\'\n", argv[0]);
     exit(1);
   }
 
@@ -97,6 +96,5 @@ int main(int argc, char **argv) {
   /* Cerramos :D!*/
   freeaddrinfo(resultado);
   close(sock);
-  printf("Eso es todo amigos\n");
   return 0;
 }

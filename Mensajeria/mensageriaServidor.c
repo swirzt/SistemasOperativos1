@@ -51,7 +51,6 @@ int main(int argc, char **argv) {
   /* Ya podemos aceptar conexiones */
   if (listen(sock, 1) == -1) error(" Listen error ");
 
-  /* Comenzamos con el bucle infinito*/
   /* Pedimos memoria para el socket */
   soclient = malloc(sizeof(int));
 
@@ -70,7 +69,6 @@ int main(int argc, char **argv) {
   /* Código muerto */
   free(soclient);
   close(sock);
-  printf("Eso es todo amigos\n");
   return 0;
 }
 
@@ -79,7 +77,7 @@ void *enviar(void *_arg) {
   int socket = *(int *)_arg;
   char buf[1024];
   while (1) {
-    gets(buf);
+    fgets(buf, sizeof(buf), stdin);
     if (send(socket, buf, sizeof(buf), 0) == -1) {
       break;
     }
@@ -94,10 +92,9 @@ void *recibir(void *_arg) {
   while (1) {
     if (recv(socket, buf, sizeof(buf), 0) == 0) {
       pthread_kill(thread[0], 42);
-      // habilitado = 0;
       break;
     }
-    printf("Cliente[%ld]: %s\n", pthread_self(), buf);
+    printf("Cliente: %s", buf);
   }
   return NULL;
 }
