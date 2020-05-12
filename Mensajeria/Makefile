@@ -3,11 +3,11 @@ FLAGS= -O3 -lpthread -Wno-unused-result
 
 all: Servidor Cliente
 
-Servidor: mensageriaServidor.c
-	$(CC) -o Servidor mensageriaServidor.c $(FLAGS)
+Servidor: Servidor.c
+	$(CC) -o Servidor Servidor.c $(FLAGS)
 
-Cliente: mensageriaCliente.c
-	$(CC) -o Cliente mensageriaCliente.c $(FLAGS)
+Cliente: Cliente.c
+	$(CC) -o Cliente Cliente.c $(FLAGS)
 
 clean:
 	rm -rf Cliente
