@@ -9,3 +9,5 @@ TP1/*.final
 soquete
 Cliente
 Servidor
+Erlang/mensajes.beam
+Erlang/*.beam
