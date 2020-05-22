@@ -34,6 +34,7 @@ broadcast(Msj, [Pid | Ps]) ->
 %% Recordar que al igual que en el ejemplo visto de
 %% `Ping Pong` la forma de hacer que el proceso siga
 %% vivo es a través de llamadas recursivas.
+%% Al finalizar el proceso con 'dest', este envia 'dest' a todos sus suscriptores 
 broadcaster(Ps) ->
     receive
         {subs, Pid } ->
@@ -41,13 +42,15 @@ broadcaster(Ps) ->
         {env , Msj } ->
             broadcast(Msj, Ps),
             broadcaster(Ps);
-        dest ->
-            ok
+        dest -> broadcast(dest, Ps)
     end.
 
+%% Si recibe 'dest' termina, de lo contrario muestra el mensaje y muere.
 echo() ->
     receive
-        Msj -> io:format("Soy ~p me llego ~p~n",[self(), Msj])
+        dest -> io:format("Soy ~p y terminé~n",[self()]);     
+        Msj -> io:format("Soy ~p me llego ~p~n",[self(), Msj]),
+               echo()
     end.
 
 start() ->
@@ -59,5 +62,6 @@ start() ->
     subscribir(Gen2,BCaster),
     subscribir(Gen3,BCaster),
     enviar("Holis!", BCaster),
+    enviar("Chau!", BCaster),
     destruir(BCaster),
     ok.
