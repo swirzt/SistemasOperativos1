@@ -26,9 +26,8 @@ work(Pid) ->
 
 start(M, Msj) ->
   W0 = spawn(?MODULE, work, [inic]),
-  W1 = spawn(?MODULE, work, [inic]),
+  W1 = spawn(?MODULE, work, [W0]),
   W0 ! W1,
-  W1 ! W0,
   W0 ! {inic, M, Msj},
   ok.
 
