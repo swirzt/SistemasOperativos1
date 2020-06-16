@@ -33,3 +33,11 @@ conectarYname() -> {ok , Socket} = gen_tcp:connect("localhost"
                     gen_tcp:close(Socket).
 
 
+jugada([X|Xs],N,Turno) -> 
+    if
+        N == 0 ->  if
+                        X == 0 -> [Turno] ++ Xs;
+                        true   -> [X]++Xs
+                   end;
+        N > 0 -> [X] ++ jugada(Xs,N-1,Turno)
+    end.

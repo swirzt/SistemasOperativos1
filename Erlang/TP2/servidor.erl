@@ -61,7 +61,20 @@ psocket(Socket, User) ->
                                              end;
                             {new, User} -> pcomando({new, User, self()}),
                                            receive
-                                               {ok, N} -> gen_tcp:send(Socket, term_to_binary({error, User, N0oO}))
+                                               {ok, N} -> gen_tcp:send(Socket, term_to_binary({ok, User, N}))
+                                           end,
+                                           psocket(Socket, User);
+                            {new, Nombre} -> gen_tcp:send(Socket, term_to_binary({error, User})),
+                                             psocket(Socket, User);
+                            {acc, User, Nid} -> pcomando({acc, User, self(), Nid}),
+                                                receive
+                                                    {ok, User, Nid} -> algo;
+                                                    {error, User, Nid} -> otro
+                                                end,
+                                                psocket(Socket, User);
+                            {acc, Nombre, _} -> otro,
+                                                psocket(Socket, User);
+                            {}
                             _ -> ok
                             end;
         {error, closed} -> %desregistrar nombre
@@ -102,16 +115,26 @@ pcomando({acc,User,Psid,Juegoid}) ->
     juegos ! {acc,User,Juegoid,self()},
     receive
         {ok, Id} -> Psid ! {ok,Psid,Id};
-        {error,ocupado,Juegoid} -> Psid ! {error,Psid,Juegoid};
-        {error,noExiste,Juegoid} -> Psid ! {error,Psid,Juegoid}
+        {error,ocupado,Juegoid} -> Psid ! {error,User,Juegoid};
+        {error,noExiste,Juegoid} -> Psid ! {error,User,Juegoid}
     end,
     usuarios ! {acc,User,Juegoid,self()},
     receive
-        {ok,}
+        {ok,User,Juegoid}
     end; 
 
 %% Esperar a implementar el juego para ver que onda
-pcomando({pla, User, Juegoid, Jugada}) -> ok;
+pcomando({pla, User, Juegoid, Jugada,Psid}) when (Jugada > 9) or (Jugada < 1) -> Psid ! {error, User, Juegoid,Jugada};
+pcomando({pla, User, Juegoid, Jugada,Psid}) ->
+    juegos ! {obtener,Juegoid,self()}, 
+    receive
+        {User,Visitante,Espectadores,JuegoTateti,{TableroActual,Jugada,1}} -> JuegoTateti ! {self(),local,Jugada}, receive
+                                                                                                                        {Tablero} -> juegos ! {updateGame,Tablero}, broadcaster([Visitante] ++ Espectadores, Tablero), Psid ! {ok,User,Juegoid,Jugada}     
+                                                                                                                   end;
+        {Local,User,Espectadores,JuegoTateti,{TableroActual,Jugada,-1}} -> JuegoTateti ! {self(),away,Jugada}
+        _ -> Psid ! {error, User,Juegoid,Jugada}
+    end;
+
 pcomando({obs, User, Juegoid }) -> ok;
 pcomando({lea, User, Juegoid}) -> ok;
 
@@ -140,19 +163,20 @@ usuarios(MapaDeUsuarios) ->
 juegos(MapaDeJuegos, N) ->
     receive
       {nuevo, User,Cartero} ->
-          Mapa = maps:put(N, {User, nadie, []}, MapaDeJuegos),
+          Mapa = maps:put(N, {User, nadie, [],sinjuego,{newtab,0,1}}, MapaDeJuegos), %% El turno arranca en cero para ver que nadie esta jugando
           Cartero ! {ok, N},
           juegos(Mapa, N + 1);
       {lista, Cmdid} -> Cmdid ! {lista,MapaDeJuegos}, juegos(MapaDeJuegos,N+1);
       {acc,User,Juegoid,Cartero} -> 
           case maps:find(Juegoid,MapaDeJuegos) of
-              {ok, {Local, nadie ,Lista}} -> 
-                  Mapa = maps:put(Juegoid, {Local,User,Lista},MapaDeJuegos),
+              {ok, {Local, nadie ,Espectadores,sinjuego,{Tablero,0,1}}} -> 
+                  Mapa = maps:put(Juegoid, {Local,User,Espectadores,spawn(?MODULE,tateti,[newtab,1,1]),{Tablero,1,1}},MapaDeJuegos), %% Cuando alguien acepta amrcamos el primer turno
                   Cartero ! {ok, Juegoid},
                   juegos(Mapa, N);
-              {ok, {Local, Visitante, Lista}} -> Cartero ! {error,ocupado,Juegoid}, juegos(MapaDeJuegos,N);
+              {ok, {_, _, _,_,{_,_,_}}} -> Cartero ! {error,ocupado,Juegoid}, juegos(MapaDeJuegos,N);
               error -> Cartero ! {error,noExiste,Juegoid}, juegos(MapaDeJuegos, N)
           end;
+      {obtener,User,Cartero} -> Cartero ! {maps:find(User, MapaDeJuegos)}, juegos(MapaDeJuegos,N);
       _ ->   ok
     end.
 
@@ -161,7 +185,6 @@ juegos(MapaDeJuegos, N) ->
 %% 4 | 5 | 6
 %% ---------
 %% 7 | 8 | 9
-%%
 
 -define(newtab,[0,0,0,0,0,0,0,0,0]).
 
@@ -183,4 +206,31 @@ checkGanador([A1,A2,A3,B1,B2,B3,C1,C2,C3]) ->
     end.
 %% Me doy asco
 
-%% juego(Tablero)
+jugada([X|Xs],N,Turno) -> 
+    if
+        N == 1 ->  if
+                        X == 0 -> Turno ++ Xs;
+                        true   -> X++Xs
+                   end;
+        N > 1 -> X ++ jugada(Xs,N-1,Turno)
+    end.
+
+
+%% Turno vale 1 o -1
+%% Pueden jugar local o away, 1 es local y -1 es away. Se identifican en el MapaDeJuegos
+tateti(Tablero, Plays,Turno) ->
+    receive
+        {Cartero,local, Pos} -> noimplementado;
+        {Cartero,away, Pos} -> noimplementado
+    end,
+    % De arriba saco TableroN y K = Plays + 1
+    % Le manda a los demás la jugada
+    %ahora checkeamos
+    case checkGanador(TableroN) of
+        w1 -> hacercuandoganaLocal;
+        w2 -> hacercuandoganaAway;
+        nada -> if
+                    K == 9 -> hacercuandoEmpate;
+                    true -> juego(TableroN,K)
+                end
+    end.
