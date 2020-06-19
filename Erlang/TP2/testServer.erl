@@ -7,6 +7,12 @@
 printearBin() -> io:format("~p~n",[error]),
 io:format("~p~n",[term_to_binary(error)]).
 
+echo()->io:format("nodito ~p~n",[node()]).
+
+testing() ->
+    [X|_] = nodes(),
+    spawn(X,?MODULE,echo,[]).
+
 main(master) ->
     {ok, LSocket} = gen_tcp:listen(?Puerto, [{packet, 0}, {active, false}]),
     escuchar(LSocket).
@@ -43,3 +49,14 @@ jugada([X|Xs],N,Turno) ->
                    end;
         N > 0 -> [X] ++ jugada(Xs,N-1,Turno)
     end.
+
+%% "# /"
+comaAlfinal([]) -> [];
+comaAlfinal([X]) -> [X];
+comaAlfinal([X|Xs]) -> [(X ++ ",")|comaAlfinal(Xs)].
+parseoDeJuegos(Lista) ->
+    ListaDeListas = [maps:to_list(X) || X <- Lista],
+    Unidos = lists:concat(ListaDeListas),
+    Stringueado = [lists:concat([A,"/",B,"/",C]) || {A,{B,C,_,_}} <- Unidos],
+    lists:concat(comaAlfinal(Stringueado)).
+    % lists:concat(comaAlfinal([lists:concat([A,"/",B,"/",C]) || {A,{B,C,_,_}} <- lists:concat([maps:to_list(X) || X <- Lista])])).
