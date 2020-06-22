@@ -56,7 +56,10 @@ comaAlfinal([X]) -> [X];
 comaAlfinal([X|Xs]) -> [(X ++ ",")|comaAlfinal(Xs)].
 parseoDeJuegos(Lista) ->
     ListaDeListas = [maps:to_list(X) || X <- Lista],
+    io:format("~p ~n",[ListaDeListas]),
     Unidos = lists:concat(ListaDeListas),
+    io:format("~p ~n",[Unidos]),
     Stringueado = [lists:concat([A,"/",B,"/",C]) || {A,{B,C,_,_}} <- Unidos],
+    io:format("~p ~n",[Stringueado]),
     lists:concat(comaAlfinal(Stringueado)).
     % lists:concat(comaAlfinal([lists:concat([A,"/",B,"/",C]) || {A,{B,C,_,_}} <- lists:concat([maps:to_list(X) || X <- Lista])])).
