@@ -3,6 +3,7 @@
 -compile(export_all).
 
 -define(Puerto, 8000).
+-define(Intervalo, 1000).
 
 %% list_to_atom
 %% JuegoId = N#Nodo
@@ -11,21 +12,29 @@
 %% Dispatcher esta siempre esperando conecciones -> les asigna psocket
 %% Tal vez {packet, 0} cierra el socket
 main(master) ->
-    {ok, LSocket} = gen_tcp:listen(?Puerto, [binary, {packet, 0}, {active, false}]),
-    U = spawn(?MODULE,
-              usuarios,
-              [maps:new()]), %% Â¿Deberia ser un mapa o una lista? Â¿Falta el cmdid?
+    {ok, LSocket} = gen_tcp:listen(?Puerto, [{packet, 0}, {active, false}]),
+    U = spawn(?MODULE, usuarios, [maps:new()]),
+    %% ¿Deberia ser un mapa o una lista? ¿Falta el cmdid?
     register(usuarios, U),
     J = spawn(?MODULE, juegos, [maps:new(), 1]),
     register(juegos, J),
-    escuchar(LSocket).
+    B = spawn(?MODULE, pbalance, [maps:new()]),
+    register(pbalance, B),
+    spawn(?MODULE, pstat, []),
+    escuchar(LSocket);
+main(nodo) ->
+    J = spawn(?MODULE, juegos, [nodo, 0]),
+    register(juegos, J),
+    spawn(?MODULE, pstat, []).
+
 
 %% Escucha en el socket asignado los pedidos y crea un proceso que se encargue de manejarlo
 escuchar(LSocket) ->
     {ok, Socket} = gen_tcp:accept(LSocket),
+    io:format("Nuevo conectado ~p~n",[Socket]),
     %% TODO: Implementar una funcion que de el nodo de menor carga
     % spawn(nodoMenorCarga, ?MODULE, psocket, [Socket]),
-    spawn(?MODULE, psocket, [Socket]),
+    spawn(?MODULE, psocket, [Socket,noname]),
     escuchar(LSocket).
 %% ------------------ FIN ZONA DISPATCHER --------------------------%%
 
@@ -36,17 +45,21 @@ escuchar(LSocket) ->
 psocket(Socket, noname) ->
     case gen_tcp:recv(Socket, 0) of
         {ok, Packet} -> [X|Xs] = string:lexemes(Packet, " "),
+                                 io:format("~p ~p~n",[X,Xs]),
                         case X of
-                            "CON" ->pcomando({con, Xs, node(), self()}),
+                            "CON" ->pbalance ! {best, self()},
+                                    receive
+                                        {best, N} -> spawn(N,?MODULE,pcomando,[{con, Xs, node(), self()}])
+                                    end,
                                     receive
                                         {ok, Nuevonombre, DATA} ->
-                                            gen_tcp:sendv(Socket, DATA),
+                                            gen_tcp:send(Socket, DATA),
                                             psocket(Socket, Nuevonombre); %llama a psocket con user
                                         {error, DATA} ->
-                                            gen_tcp:sendv(Socket, DATA),
+                                            gen_tcp:send(Socket, DATA),
                                             psocket(Socket, noname) %se llama con noname y espera otro user
                                     end;
-                            _ ->    gen_tcp:sendv(Socket, "ERROR noregistrado"),
+                            _ ->    gen_tcp:send(Socket, "ERROR noregistrado"),
                                     psocket(Socket, noname)
                         end;
         {error, closed} -> gen_tcp:close(Socket)
@@ -55,32 +68,37 @@ psocket(Socket, noname) ->
 psocket(Socket, User) ->
     case gen_tcp:recv(Socket, 0,?TIMEOUT) of
         {ok, Packet} -> [X|Xs] = string:lexemes(Packet, " "),
+                        pbalance ! {best, self()},
+                        receive
+                            {best, N} -> ok
+                        end,
+                        io:format("Ya conseguí el mejor nodo: ~p~n"),
                         case X of
                            "CON" -> gen_tcp:send(Socket,"ERROR yaregistrado"),
                                     psocket(Socket,User);
-                           "LSG" -> pcomando({lsg, Xs, self()}),
+                           "LSG" -> spawn(N,?MODULE,pcomando,[{lsg, Xs, self()}]),
                                     psocket(Socket,User);
-                           "NEW" -> pcomando({new, Xs, User, self()}),
+                           "NEW" -> spawn(N,?MODULE,pcomando,[{new, Xs, User, self()}]),
                                     psocket(Socket, User);
-                           "ACC" -> pcomando({acc, Xs, User, self()}),
+                           "ACC" -> spawn(N,?MODULE,pcomando,[{acc, Xs, User, self()}]),
                                     psocket(Socket, User);
-                           "PLA" -> pcomando({pla, Xs, User, self()}),
+                           "PLA" -> spawn(N,?MODULE,pcomando,[{pla, Xs, User, self()}]),
                                     psocket(Socket, User);
-                           "OBS" -> pcomando({obs, Xs, User, self()}),
+                           "OBS" -> spawn(N,?MODULE,pcomando,[{obs, Xs, User, self()}]),
                                     psocket(Socket, User);
-                           "LEA" -> pcomando({lea, Xs, User, self()}),
+                           "LEA" -> spawn(N,?MODULE,pcomando,[{lea, Xs, User, self()}]),
                                     psocket(Socket, User);
                            "BYE" -> pcomando({bye, User}),
                                     gen_tcp:close(Socket);
-                            _    -> if
-                                        Xs == [] -> gen_tcp:send(Socket, "ERROR wrongformat");
-                                        true     -> CMDID = lists:nth(1,Xs),   
-                                                    gen_tcp:send(Socket, lists:concat("ERROR ",CMDID," wrongcommand")),
-                                                    psocket(Socket, User)
+                            _    -> case Xs of
+                                        []  ->  gen_tcp:send(Socket, "ERROR wrongformat");
+                                        _   ->  CMDID = lists:nth(1,Xs),   
+                                                gen_tcp:send(Socket, lists:concat("ERROR ",CMDID," wrongcommand")),
+                                                psocket(Socket, User)
                                     end
                         end;
         {error, closed} ->  pcomando({bye, User, self()}),
-                            %Es lo mismo que BYE
+                            io:format("Se fue~n"),
                             gen_tcp:close(Socket);
         {error, timeout} -> receive
                                 {ok, Data} ->   gen_tcp:send(Socket, Data),
@@ -139,13 +157,13 @@ pcomando({pla, [CMDID, Juegoid, Jugada], User, Psid}) ->
     receive
         {User,Visitante,Espectadores,JuegoTateti} -> JuegoTateti ! {self(),local,Jugada}, %%Si pudo jugar re piola, recibe un ok y el tablero, sino recibe un error. IMPLEMENTAR CUANDO HAGAMOS BIEN EL JUEGO
                                                      receive
-                                                        {ok,Tablero} ->  broadcasterTablero([Visitante] ++ Espectadores, {Tablero,Juegoid}), Psid ! {ok,lists:concat("OK ",CMDID, " ",Juegoid, " ",Jugada)}     
+                                                        {Cond,Tablero} ->  broadcasterTablero([Visitante | Espectadores], {Cond,Tablero,Juegoid}), Psid ! {ok,lists:concat("OK ",CMDID, " ",Juegoid, " ",Jugada)}     
                                                      end;
-        {Local,User,Espectadores,JuegoTateti} -> JuegoTateti ! {self(),away,Jugada},
-                                                 receive
-                                                    {ok,Tablero} ->  broadcasterTablero([Local] ++ Espectadores, Tablero), Psid ! {ok,lists:concat("OK ",CMDID, " ",Juegoid, " ",Jugada)}     
-                                                 end;
-        _ -> Psid ! {error, User,Juegoid,Jugada}
+        {Local,User,Espectadores,JuegoTateti}     -> JuegoTateti ! {self(),away,Jugada},
+                                                     receive
+                                                        {Cond,Tablero} ->  broadcasterTablero([Local | Espectadores], {Cond,Tablero,Juegoid}), Psid ! {ok,lists:concat("OK ",CMDID, " ",Juegoid, " ",Jugada)}     
+                                                     end;
+        _ -> Psid ! {error, lists:concat("ERROR ",CMDID, " ",Juegoid, " ",Jugada)}
     end;
 pcomando({pla, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
 
@@ -168,10 +186,15 @@ pcomando({lea, [CMDID, Juegoid], User, Psid}) ->
 pcomando({lea, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
 
 pcomando({bye,User}) ->
-    %% Avisar que perdió todo
-    %% Desligar name
-    %% Salir de observar
-    juegos ! {bye,self(),{User}}.
+    %% Avisar que perdió todo: Ahora!
+    %% Desligar name: check
+    %% Salir de observar:stand by me
+    [_,NodoPc] = string:lexemes(User,"#"),
+    {usuarios,NodoPc} ! {obtener,User,self()},
+    receive
+        {_,Juegos} -> eliminarJugador(Juegos,User)
+    end,
+    {usuarios,NodoPc} ! {bye,User}.
 
 %%Auxiliares  de lsg
 pedirListaJuegos(0,M) -> M;
@@ -211,12 +234,13 @@ usuarios(MapaDeUsuarios) ->
             error -> Mapa = maps:put(User, {Psid,[]}, MapaDeUsuarios),
                      Cartero ! ok,
                      usuarios(Mapa);
-            _ -> Cartero ! error,usuarios(MapaDeUsuarios)
+            _ -> Cartero ! error,
+                 usuarios(MapaDeUsuarios)
           end;
       {acc,User,Juegoid,Cartero} -> {Psid,JuegosActuales} = maps:find(User,MapaDeUsuarios), Mapa = maps:put (User, {Psid,[Juegoid] ++ JuegosActuales}), Cartero ! {ok,Juegoid}, usuarios(Mapa);
       {listaEliminar,User,Cartero} -> {_,JuegosActuales} = maps:find(User,MapaDeUsuarios), Cartero ! {juegosActuales,JuegosActuales}, Mapa = maps:remove(User,MapaDeUsuarios), usuarios(Mapa);
       {obtener,User,Cartero} -> Cartero ! {maps:find(User,MapaDeUsuarios)}, usuarios(MapaDeUsuarios);
-      {bye,User} -> {_,JuegosActuales} = maps:find(User,MapaDeUsuarios), eliminarJugador(JuegosActuales,User),usuarios(MapaDeUsuarios);
+      {bye, User} -> Mapa =maps:remove(User,MapaDeUsuarios), usuarios(Mapa);
       _ -> usuarios(MapaDeUsuarios)
     end.
 
@@ -257,9 +281,9 @@ juegos(MapaDeJuegos, N) ->
           end;
       {borrar,Cartero,{Juegoid,User}} -> 
           case maps:find(Juegoid,MapaDeJuegos) of 
-            error -> Cartero ! error,juegos(MapaDeJuegos,N) ;
-            {User,Visitante,Espectadores,JuegoTateti} -> Mapa = maps:put(Juegoid, {abandono,Visitante, Espectadores, JuegoTateti}), Cartero ! ok,juegos(Mapa,N);
-            {Local,User,Espectadores,JuegoTateti} -> Mapa = maps:put(Juegoid, {Local,abandono, Espectadores, JuegoTateti}), Cartero ! ok,juegos(Mapa,N)    
+            error -> Cartero ! error,juegos(MapaDeJuegos,N);
+            {User,_,_,JuegoTateti} -> JuegoTateti ! {self(),local,bye}, Cartero ! ok,juegos(MapaDeJuegos,N);
+            {_,User,_,JuegoTateti} -> JuegoTateti ! {self(),local,bye}, Cartero ! ok,juegos(MapaDeJuegos,N)    
           end;
       _ -> juegos(MapaDeJuegos,N)
     end.
@@ -268,27 +292,24 @@ juegos(MapaDeJuegos, N) ->
 
 
 %% ------------------ ZONA JUEGO -----------------------------------%%
-%% 1 | 2 | 3
-%% ---------
-%% 4 | 5 | 6
-%% ---------
-%% 7 | 8 | 9
-
 -define(newtab,[0,0,0,0,0,0,0,0,0]).
 
+checkGanador({abandon,P}) -> P;
 checkGanador([A1,A2,A3,B1,B2,B3,C1,C2,C3]) ->
     %% filas
     F1 = A1 + A2 +A3, F2 = B1 + B2 + B3, F3 = C1 + C2 + C3,
     %% columnas
     Col1 = A1 + B1 + C1, Col2 = A2 + B2 + C2, Col3 = A3 + B3 + C3,
     %% diagonales
-    Diag1 = A1 + B2 + C3, Diag2 = C1 + B2 + C3,
-    %% Hardcoded because why not
+    Diag1 = A1 + B2 + C3, Diag2 = C1 + B2 + A3,
+    %% Hardcoded because why not, termina siendo O(1)
+    Max = lists:max([F1,F2,F3,Col1,Col2,Col3,Diag1,Diag2]),
+    Min = lists:min([F1,F2,F3,Col1,Col2,Col3,Diag1,Diag2]),
     if 
         %% Gano J1
-        (F1 == 3) or (F2 == 3) or (F3 == 3) or (Col1 == 3) or (Col2 == 3) or (Col3 == 3) or (Diag1 == 3) or (Diag2 == 3) -> w1; 
+        Max == 3 -> w1; 
         %% Gano J2
-        (F1 == -3) or (F2 == -3) or (F3 == -3) or (Col1 == -3) or (Col2 == -3) or (Col3 == -3) or (Diag1 == -3) or (Diag2 == -3) -> w2;
+        Min == -3 -> w2;
         %% Nadie
         true -> nada    
     end.
@@ -297,10 +318,10 @@ checkGanador([A1,A2,A3,B1,B2,B3,C1,C2,C3]) ->
 jugada([X|Xs],N,Turno) -> 
     if
         N == 1 ->  if
-                        X == 0 -> Turno ++ Xs;
-                        true   -> X++Xs
+                        X == 0 -> [Turno] ++ Xs;
+                        true   -> [X]++Xs
                    end;
-        N > 1 -> X ++ jugada(Xs,N-1,Turno)
+        N > 1 -> [X] ++ jugada(Xs,N-1,Turno)
     end.
 
 
@@ -308,35 +329,55 @@ jugada([X|Xs],N,Turno) ->
 %% Pueden jugar local o away, 1 es local y -1 es away. Se identifican en el MapaDeJuegos
 tateti(Tablero, Plays,Turno) ->
     receive
-        {Cartero,local, Pos} -> noimplementado;
-        {Cartero,away, Pos} -> noimplementado
+        {Cartero,local,bye} -> TableroN = {abandon,w1};
+        {Cartero,away, bye} -> TableroN = {abandon,w2};
+        {Cartero,local ,Pos} -> TableroN = jugada(Tablero,Pos, 1);
+        {Cartero,away  ,Pos} -> TableroN = jugada(Tablero,Pos, -1)
     end,
-    % De arriba saco TableroN y K = Plays + 1
-    % Le manda a los demás la jugada
-    %ahora checkeamos
     K = Plays + 1,
     case checkGanador(TableroN) of
-        w1 -> hacercuandoganaLocal;
-        w2 -> hacercuandoganaAway;
+        w1 -> Cartero ! {w1,TableroN};
+        w2 -> Cartero ! {w2,TableroN};
         nada -> if
-                    K == 9 -> hacercuandoEmpate;
-                    true -> juego(TableroN,K)
+                    K == 9 -> Cartero ! {empate,TableroN};
+                    true -> Cartero ! {tablero,TableroN},tateti(TableroN,K,-Turno)
                 end
     end.
 
 %% Envía a todos los procesos de la lista un mensaje
 broadcasterTablero([],_) -> ok;
-broadcasterTablero([X|Xs],{Tablero,Juegoid}) -> 
-    usuarios ! {obtener,X,self()},
+%% Es una lista de jugadores
+broadcasterTablero([X|Xs],{Cond,Tablero,Juegoid}) -> 
+    [_,NodoPc] = string:lexemes(X,"#"),
+    {usuarios,NodoPc} ! {obtener,X,self()},
     receive
-        {Psid,_} -> Psid ! {upd, Tablero,Juegoid}
+        {Psid,_} -> Psid ! {Cond, Tablero,Juegoid}
     end,
-    broadcasterTablero(Xs,{Tablero,Juegoid}).
+    broadcasterTablero(Xs,{Cond,Tablero,Juegoid}).
 
-%% Esta creo que va en el cliente
-imprimeTablero([]) -> ok;
-imprimeTablero([A|B|C|XS]) -> 
-    io:format("~p | ~p | ~p ~n",[A,B,C]),
-    io:format("-------------~n"),
-    imprimeTablero(XS).
+imprimeTablero([A1,A2,A3,B1,B2,B3,C1,C2,C3]) ->
+    io:format("~p | ~p | ~p ~n",[A1,A2,A3]),
+    io:format("---------~n"),
+    io:format("~p | ~p | ~p ~n",[B1,B2,B3]),
+    io:format("---------~n"),
+    io:format("~p | ~p | ~p ~n",[C1,C2,C3]).
 %% ------------------ FIN ZONA JUEGO -------------------------------%%
+
+%% ------------------ ZONA PSTAT -----------------------------------%%
+pstat() ->
+    X = erlang:statistics(run_queue),
+    [{pbalance, Node} ! {stat, node(), X} || Node <- [node()|nodes()]], 
+    timer:sleep(?Intervalo),
+    pstat().
+
+pbalance(MapaNodos) ->
+    receive
+        {stat, Nodo, Val} -> NMap = maps:put(Nodo, Val, MapaNodos),
+                             pbalance(NMap);
+        {best, PId} -> LNodos = maps:to_list(MapaNodos),
+                       Invert = [{B,A} || {A,B} <- LNodos],
+                       {_,Node} = lists:min(Invert),
+                       PId ! {best, Node},
+                       pbalance(MapaNodos)
+    end.
+%% ------------------ FIN ZONA PSTAT -------------------------------%%
