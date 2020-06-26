@@ -44,7 +44,6 @@ int main(int argc, char **argv)
     fprintf(stderr, "No se encontro el host: %s \n", argv[1]);
     exit(2);
   }
-  pcomando({pla, [ CMDID, Juegoid, Jugada ], _, Psid}) when(list_to_integer(Jugada) > 9) or (list_to_integer(Jugada) < 1)->Psid !{error, lists : concat([ "ERROR ", CMDID, " JUEGO ", Juegoid, " JUGADA ", Jugada ])};
 
   if (connect(sock, (struct sockaddr *)resultado->ai_addr, resultado->ai_addrlen) != 0)
     /* if(connect(sock, (struct sockaddr *) &servidor, sizeof(servidor)) != 0) */
