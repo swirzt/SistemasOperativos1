@@ -82,3 +82,6 @@ parseoDeJuegos(Lista) ->
             chau -> Y = 5
         end,
         io:format("~p~n",[Y]).
+
+pedro() ->
+    io:format("~p~n",[registered()]).
