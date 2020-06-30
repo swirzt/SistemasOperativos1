@@ -60,7 +60,7 @@ psocket(Socket, noname) ->
                 receive
                   {ok, Nuevonombre, DATA} ->
                       gen_tcp:send(Socket, DATA),
-                      io:format("Cliente en ~p, se registrÃ³ como ~p~n", [Socket, Nuevonombre]),
+                      io:format("Cliente en ~p, se registró como ~p~n", [Socket, Nuevonombre]),
                       psocket(Socket, Nuevonombre); %llama a psocket con user
                   {error, DATA} ->
                       gen_tcp:send(Socket, DATA),
@@ -68,7 +68,7 @@ psocket(Socket, noname) ->
                 end;
             "BYE" ->
                 gen_tcp:close(Socket),
-                io:format("Se desconectÃ³ en ~p", [Socket]);
+                io:format("Se desconectó en ~p", [Socket]);
             _ ->
                 gen_tcp:send(Socket, "ERROR unregistered"),
                 psocket(Socket, noname)
@@ -111,7 +111,7 @@ psocket(Socket, User) ->
             "BYE" ->
                 pcomando({bye, User}),
                 gen_tcp:close(Socket),
-                io:format("~p -> se desconectÃ³ en ~p~n", [User, Socket]);
+                io:format("~p -> se desconectó en ~p~n", [User, Socket]);
             "OK" ->
                 psocket(Socket, User);
             "ERROR" ->
@@ -130,7 +130,7 @@ psocket(Socket, User) ->
       {error, closed} ->
           pcomando({bye, User}),
           gen_tcp:close(Socket),
-          io:format("~p -> se desconectÃ³ en ~p~n", [User, Socket]);
+          io:format("~p -> se desconectó en ~p~n", [User, Socket]);
       {error, timeout} ->
           receive
             {update, Data} ->

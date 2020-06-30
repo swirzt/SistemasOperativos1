@@ -2,11 +2,14 @@
 
 -export([main/2, loopRecv/1, sacarJuego/1, imprimeTablero/1]).
 
--define(StringScreen,
-        "Ingrese un nÃºmero para seleccionar un comando, sus opciones "
-        "son:~n\n1)Lista de juegos~n\n2)Nuevo juego~n\n3)Aceptar un "
-        "juego~n\n4)Jugar una jugada~n\n5)Observar un juego~n\n6)Dejar "
-        "de observar un juego~n\n7)Cerrar la conexiÃ³n~n").
+-define(StringScreen,"Ingrese un número para seleccionar un comando, sus opciones son:~n
+1)Lista de juegos~n
+2)Nuevo juego~n
+3)Aceptar un juego~n
+4)Jugar una jugada~n
+5)Observar un juego~n
+6)Dejar de observar un juego~n
+7)Cerrar la conexión~n").
 
 %%Elimina \n de una cadena
 quitabarran([$\n | Xs]) ->
@@ -32,7 +35,7 @@ sacarJuego([X | Xs]) ->
 main(IP, Puerto) ->
     case gen_tcp:connect(IP, Puerto, [{packet, 0}, {active, false}]) of
       {ok, Socket} ->
-          io:format("ConexiÃ³n exitosa!~n"),
+          io:format("Conexión exitosa!~n"),
           io:format("Bienvenido! Por favor ingrese su nombre: ~n"),
           Nombre = quitabarran(io:get_line("Nombre:")),
           registrarse(Nombre, Socket),
@@ -57,7 +60,7 @@ registrarse(Nombre, Socket) ->
                   "ERROR" ->
                       case Xs of
                         "invalidchar" ->
-                            io:format("Nombre invÃ¡lido, intente otro nombre~n"),
+                            io:format("Nombre inválido, intente otro nombre~n"),
                             Name = quitabarran(io:get_line("Nombre:")),
                             registrarse(Name, Socket);
                         "usedname" ->
@@ -65,17 +68,17 @@ registrarse(Nombre, Socket) ->
                             Name = quitabarran(io:get_line("Nombre:")),
                             registrarse(Name, Socket);
                         "badarg" ->
-                            io:format("Nombre invÃ¡lido, intente otro nombre~n"),
+                            io:format("Nombre inválido, intente otro nombre~n"),
                             Name = quitabarran(io:get_line("Nombre:")),
                             registrarse(Name, Socket)
                       end
                 end;
             {error, Reason} ->
-                io:format("El registro fallÃ³ por ~p, intentando otra vez... ~n", [Reason]),
+                io:format("El registro falló por ~p, intentando otra vez... ~n", [Reason]),
                 registrarse(Nombre, Socket)
           end;
       {error, Reason} ->
-          io:format("El registro fallÃ³ por ~p, intentando otra vez... ~n", [Reason]),
+          io:format("El registro falló por ~p, intentando otra vez... ~n", [Reason]),
           registrarse(Nombre, Socket)
     end.
 
@@ -85,27 +88,27 @@ clienteBonito(Socket, N) ->
     case quitabarran(io:get_line("Opción:")) of
       "1" ->
           gen_tcp:send(Socket, lists:concat(["LSG ", N])),
-          io:format("El nÃºmero de pedido es ~p~n", [N]);
+          io:format("El número de pedido es ~p~n", [N]);
       "2" ->
           gen_tcp:send(Socket, lists:concat(["NEW ", N])),
-          io:format("El nÃºmero de pedido es ~p~n", [N]);
+          io:format("El número de pedido es ~p~n", [N]);
       "3" ->
           Juego = quitabarran(io:get_line("Juego:")),
           gen_tcp:send(Socket, lists:concat(["ACC ", N, " ", Juego])),
-          io:format("El nÃºmero de pedido es ~p~n", [N]);
+          io:format("El número de pedido es ~p~n", [N]);
       "4" ->
           Juego = quitabarran(io:get_line("Juego:")),
           Jugada = quitabarran(io:get_line("Jugada:")),
           gen_tcp:send(Socket, lists:concat(["PLA ", N, " ", Juego, " ", Jugada])),
-          io:format("El nÃºmero de pedido es ~p~n", [N]);
+          io:format("El número de pedido es ~p~n", [N]);
       "5" ->
           Juego = quitabarran(io:get_line("Juego:")),
           gen_tcp:send(Socket, lists:concat(["OBS ", N, " ", Juego])),
-          io:format("El nÃºmero de pedido es ~p~n", [N]);
+          io:format("El número de pedido es ~p~n", [N]);
       "6" ->
           Juego = quitabarran(io:get_line("Juego:")),
           gen_tcp:send(Socket, lists:concat(["LEA ", N, " ", Juego])),
-          io:format("El nÃºmero de pedido es ~p~n", [N]);
+          io:format("El número de pedido es ~p~n", [N]);
       "7" ->
           gen_tcp:send(Socket, "BYE"),
           gen_tcp:close(Socket);
@@ -136,9 +139,9 @@ loopRecv(Socket) ->
                         "tablero" ->
                             io:format("Juego:~p~nTablero:~n", [lists:nth(1, Xsss)]);
                         "w1" ->
-                            io:format("Juego:~p~nGanÃ³ el jugardor local~n", [lists:nth(1, Xsss)]);
+                            io:format("Juego:~p~nGanó el jugardor local~n", [lists:nth(1, Xsss)]);
                         "w2" ->
-                            io:format("Juego:~p~nGanÃ³ el jugardor visitante~n",
+                            io:format("Juego:~p~nGanó el jugardor visitante~n",
                                       [lists:nth(1, Xsss)]);
                         "empate" ->
                             io:format("Juego:~p~nEmpate!~n", [lists:nth(1, Xsss)])
@@ -156,7 +159,7 @@ loopRecv(Socket) ->
                   "occupied" ->
                       io:format("Juego ocupado en el pedido ~p~n", [Xs]);
                   "badarg" ->
-                      io:format("Argumentos invÃ¡lidos en el pedido ~p~n", [Xs]);
+                      io:format("Argumentos inválidos en el pedido ~p~n", [Xs]);
                   "noExist" ->
                       io:format("Juego inexistente en el pedido ~p~n", [Xs]);
                   "alreadyReg" ->
@@ -166,17 +169,17 @@ loopRecv(Socket) ->
                   "badFormat" ->
                       io:format("Formato equivocado en el pedido ~p~n", [Xs]);
                   "invalid" ->
-                      io:format("Jugada invÃ¡lida en el pedido ~p~n", [Xs]);
+                      io:format("Jugada inválida en el pedido ~p~n", [Xs]);
                   "badTurn" ->
                       io:format("Turno equivocado en el pedido ~p~n", [Xs]);
                   "noStarted" ->
-                      io:format("El juego no comenzÃ³ en el pedido ~p~n", [Xs]);
+                      io:format("El juego no comenzó en el pedido ~p~n", [Xs]);
                   "noOpponent" ->
                       io:format("Juego sin oponente en el pedido ~p~n", [Xs]);
                   "unknown" ->
                       io:format("Error desconocidoen el pedido ~p~n", [Xs]);
                   "wrongcmd" ->
-                      io:format("Comando errÃ³neo ~p~n", [Xs])
+                      io:format("Comando erróneo ~p~n", [Xs])
                 end;
             "UPD" ->
                 case Xss of
@@ -185,16 +188,16 @@ loopRecv(Socket) ->
                         "tablero" ->
                             io:format("Juego:~p~nTablero:~n", [lists:nth(1, Xsss)]);
                         "w1" ->
-                            io:format("Juego:~p~nGanÃ³ el jugardor local~n", [lists:nth(1, Xsss)]);
+                            io:format("Juego:~p~nGanó el jugardor local~n", [lists:nth(1, Xsss)]);
                         "w2" ->
-                            io:format("Juego:~p~nGanÃ³ el jugardor visitante~n",
+                            io:format("Juego:~p~nGanó el jugardor visitante~n",
                                       [lists:nth(1, Xsss)]);
                         "empate" ->
                             io:format("Juego:~p~nEmpate!~n", [lists:nth(1, Xsss)])
                       end,
                       imprimeTablero(string:lexemes(lists:nth(3, Xsss), ","));
                   "abandon" ->
-                      io:format("El juego ~p se cancelÃ³~n", Xsss),
+                      io:format("El juego ~p se canceló~n", Xsss),
                       gen_tcp:send(Socket, lists:concat(["OK ", Xs]));
                   "accept" ->
                       io:format("Nuevo oponente en el juego ~p~n", Xsss);
