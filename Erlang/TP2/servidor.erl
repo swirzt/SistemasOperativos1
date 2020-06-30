@@ -1,45 +1,15 @@
 -module(servidor).
-%% CHEQUEAR QUE SI ESTA JUGANDOO NO SE SUSCRIBA --aldope
-%% CHEQUEAR QUE NODOO O USER TENGA # antes de lexemear -- mi amigo gurvich dice aldope
-%% NODO YA ESTA PERO FALTA USER
-%% INTENTAR SOCKET ACTIVE TRUE -- lo hago en branch
-%% HACER CASES EN RESULTADOS QUE YA EsPERAMOS CORRECTOS
-%% Mejorar mensajes de error
--export([main/1,psocket/2,pcomando/1,usuarios/1,juegos/2]).
--export([tateti/4,pstat/0,pbalance/1,imprimeTablero/1]).
+-export([dispatcher/1,psocket/2,pcomando/1,usuarios/1,juegos/2]).
+-export([pstat/0,pbalance/1,tateti/4]).
+
+-include("tateti.hrl").
 
 -define(Puerto, 8000).
 -define(Intervalo, 5000).
--define(Newtab,[0,0,0,0,0,0,0,0,0]).
-
-%% Solo borrar cuando saque todas sus llamadas
-% sacaNodo(DATO) ->
-%     [_,NodoPc] = string:lexemes(DATO,"#"),
-%     list_to_atom(NodoPc).
-
-%% ------------------ ZONA PARSEO ----------------------------------%%
-obtieneNodo(Dato) -> 
-    case string:lexemes(Dato,"#") of
-        [_,NodoPc] ->   Nodo = list_to_atom(NodoPc),
-                        Eval = in(Nodo,[node()|nodes()]),
-                        if
-                            Eval -> {ok,Nodo};
-                            true -> {error,noExist}
-                        end;
-        _ -> {error,badFormat}
-    end.
-
-in(_,[]) -> false;
-in(X,[Y|Ys]) ->
-    if
-        X == Y -> true;
-        true   -> in(X,Ys)
-    end.
-%% ------------------ FIN ZONA PARSEO ------------------------------%%
 
 %% ------------------ ZONA DISPATCHER ------------------------------%%
-%% Dispatcher esta siempre esperando conecciones -> les asigna psocket
-main(master) ->
+%% Inicia un nodo como servidor, con los procesos correspondientes
+dispatcher(servidor) ->
     case gen_tcp:listen(?Puerto, [{packet, 0}, {active, false}]) of
         {ok, LSocket} -> ok;
         {error,_} -> io:format("Puerto ocupado~n"),
@@ -55,12 +25,13 @@ main(master) ->
     register(pbalance, B),
     spawn(?MODULE, pstat, []),
     escuchar(LSocket);
-main(nodo) ->
+%% Inicia un nodo como trabajador
+dispatcher(trabajador) ->
     J = spawn(?MODULE, juegos, [nodo,0]),
     register(juegos, J),
     spawn(?MODULE, pstat, []).
 
-%% Escucha en el socket asignado los pedidos y crea un proceso que se encargue de manejarlo
+%% Escucha en el socket asignado los pedidos y crea un proceso psocket que se encargue de manejarlo
 escuchar(LSocket) ->
     {ok, Socket} = gen_tcp:accept(LSocket),
     io:format("Nuevo conectado ~p~n",[Socket]),
@@ -71,6 +42,7 @@ escuchar(LSocket) ->
 %% ------------------ ZONA PSOCKET ---------------------------------%%
 -define(TIMEOUT,1).
 %% Va a recibir un mensaje y actuar de acorde a eso
+%% Esta versión solamente puede recibir un comando de nuevo usuario o de salida
 psocket(Socket, noname) ->
     case gen_tcp:recv(Socket, 0) of
         {ok, Packet} -> [X|Xs] = string:lexemes(Packet, " "),
@@ -82,28 +54,30 @@ psocket(Socket, noname) ->
                                     receive
                                         {ok, Nuevonombre, DATA} ->
                                             gen_tcp:send(Socket, DATA),
+                                            io:format("Cliente en ~p, se registró como ~p~n",[Socket,Nuevonombre]),
                                             psocket(Socket, Nuevonombre); %llama a psocket con user
                                         {error, DATA} ->
                                             gen_tcp:send(Socket, DATA),
                                             psocket(Socket, noname) %se llama con noname y espera otro user
                                     end;
-                            "BYE" -> gen_tcp:close(Socket);
-                            _ ->    gen_tcp:send(Socket, "ERROR noregistrado"),
+                            "BYE" -> gen_tcp:close(Socket),
+                                     io:format("Se desconectó en ~p",[Socket]);
+                            _ ->    gen_tcp:send(Socket, "ERROR unregistered"),
                                     psocket(Socket, noname)
                         end;
         {error, closed} -> gen_tcp:close(Socket)
     end;
 
+%% Esta versión acepta todos los comandos
 psocket(Socket, User) ->
     case gen_tcp:recv(Socket, 0,?TIMEOUT) of
         {ok, Packet} -> [X|Xs] = string:lexemes(Packet, " "),
-                        io:format("~p~n",[Xs]),
                         pbalance ! {best, self()},
                         receive
                             {best, N} -> ok
                         end,
                         case X of
-                           "CON" -> gen_tcp:send(Socket,"ERROR yaregistrado"),
+                           "CON" -> gen_tcp:send(Socket,lists:concat(["ERROR ",User, " alreadyReg"])),
                                     psocket(Socket,User);
                            "LSG" -> spawn(N,?MODULE,pcomando,[{lsg, Xs, self()}]),
                                     psocket(Socket,User);
@@ -118,23 +92,26 @@ psocket(Socket, User) ->
                            "LEA" -> spawn(N,?MODULE,pcomando,[{lea, Xs, User, self()}]),
                                     psocket(Socket, User);
                            "BYE" -> pcomando({bye, User}),
-                                    gen_tcp:close(Socket);
+                                    gen_tcp:close(Socket),
+                                    io:format("~p -> se desconectó en ~p~n",[User,Socket]);
+                            "OK" -> psocket(Socket, User);
+                         "ERROR" -> psocket(Socket, User);
                             _    -> case Xs of
-                                        []  ->  gen_tcp:send(Socket, "ERROR wrongformat");
+                                        []  ->  gen_tcp:send(Socket, lists:concat(["ERROR ",X, " badformat"])),
+                                                psocket(Socket, User);
                                         _   ->  CMDID = lists:nth(1,Xs),   
-                                                gen_tcp:send(Socket, lists:concat(["ERROR ",CMDID," wrongcommand"])),
+                                                gen_tcp:send(Socket, lists:concat(["ERROR ",CMDID," wrongcmd ",X])),
                                                 psocket(Socket, User)
                                     end
                         end;
         {error, closed} ->  pcomando({bye, User}),
-                            gen_tcp:close(Socket);
+                            gen_tcp:close(Socket),
+                            io:format("~p -> se desconectó en ~p~n",[User,Socket]);
         {error, timeout} -> receive
-                                {ok, Data} ->   gen_tcp:send(Socket, Data),
-                                                psocket(Socket,User);
-                                {error, Data} ->    gen_tcp:send(Socket, Data),
-                                                    psocket(Socket,User);
                                 {update, Data} -> gen_tcp:send(Socket, Data),
-                                                    psocket(Socket,User);
+                                                  psocket(Socket,User);
+                                {_, Data} ->  gen_tcp:send(Socket, Data),
+                                              psocket(Socket,User);
                                 _ -> ok
                             after ?TIMEOUT -> psocket(Socket,User)
                             end;
@@ -143,52 +120,62 @@ psocket(Socket, User) ->
 %% ------------------ FIN ZONA PSOCKET -----------------------------%%
 
 %% ------------------ ZONA PCOMANDO --------------------------------%%
+%% Los distintos tipos de pcomando
 pcomando({con, [User], Nodo, Psid}) ->
-    Nombre = lists:concat([User,'#',Nodo]),
-    {usuarios,Nodo} ! {self(), nuevo, Nombre, Psid},
-    receive
-      ok -> Psid ! {ok, Nombre, "OK " ++ User};
-      error -> Psid ! {error, "ERROR " ++ User}
+    %% No #, no @, No /, No " ", No ","
+    Tiene = multiIn([32,$#,$@,$/,$,],User), %% 32 es el ASCII de " "
+    if
+        Tiene ->
+            Psid ! {error, lists:concat(["ERROR invalidchar ", User])};
+        true ->
+            Nombre = lists:concat([User,'#',Nodo]),
+            {usuarios,Nodo} ! {self(), nuevo, Nombre, Psid},
+            receive
+            ok -> Psid ! {ok, Nombre, "OK " ++ User};
+            error -> Psid ! {error, lists:concat(["ERROR usedname ", User])}
+            end
     end;
-pcomando({con, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
+pcomando({con, _, _, Psid}) -> Psid ! {error, "ERROR badarg"};
 
 pcomando({lsg, [CMDID], Psid}) ->
     X = length([{juegos,Node} ! {listaPersonal,self()} || Node <- [node()|nodes()]]), 
     Y = pedirListaJuegos(X,[]),
     Z = parseoDeJuegos(Y),
-    L = lists:concat(["OK ", CMDID, " ", Z]),
+    L = lists:concat(["OK ", CMDID, " list ", Z]),
     Psid ! {ok, L};
-pcomando({lsg, _, Psid}) -> Psid ! {error, "ERROR badargument"};
+pcomando({lsg, _, Psid}) -> Psid ! {error, lists:concat(["ERROR ",lsg, " badarg"])};
 
 pcomando({new, [CMDID], User, Psid}) ->
     {ok, Nodo} = obtieneNodo(User), %% No provoca badmatch porque User siempre es creado correctamente
     {juegos,Nodo} ! {nuevo, self(),{User}},
     receive
-        {ok,N} -> Psid ! {ok, lists:concat(["OK ",CMDID," ",N])}
+        {ok,J} -> {usuarios,Nodo} ! {acc,User,J,self()}, Psid ! {ok, lists:concat(["OK ",CMDID," game ",J])};
+        error -> Psid ! {error,lists:concat(["ERROR ",CMDID," unknown"])}
     end;
-pcomando({new, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
+pcomando({new, _, _, Psid}) -> Psid ! {error, lists:concat(["ERROR ",new, " badarg"])};
 
-%% Hacer en todos y poner cuando no matchea
 pcomando({acc, [CMDID, Juegoid], User, Psid}) ->
     case obtieneNodo(Juegoid) of
         {ok, NodoPc} ->
                         {juegos,NodoPc} ! {acc,self(),{User,Juegoid}},
                         receive
-                            ok -> {ok, NodoPcS} = obtieneNodo(User), {usuarios, NodoPcS} ! {acc,User,Juegoid,self()}, 
+                            {ok,Local} -> {ok, NodoPc} = obtieneNodo(User), {usuarios, NodoPc} ! {acc,User,Juegoid,self()}, 
                                   receive
-                                        ok -> Psid ! {ok, lists:concat(["OK ",CMDID, " ", Juegoid])} %%Fijate de devolver el tablero
+                                        ok -> Psid ! {ok, lists:concat(["OK ",CMDID, " acc ", Juegoid])}, {ok,Nodito} = obtieneNodo(Local), {usuarios,Nodito} ! {obtener,Local,self()}, receive
+                                                                                                                                                                                            {IdSock,_} -> IdSock ! {ok,lists:concat(["UPD ", CMDID, " accept ",Juegoid])}
+                                                                                                                                                                                        end;
+                                        error -> Psid ! {error, lists:concat(["ERROR ",CMDID," badarg ",Juegoid])}
                                   end;
-                            {error, ocupado}  -> Psid ! {error, lists:concat(["ERROR ",CMDID," ",Juegoid])};
-                            {error, noExiste} -> Psid ! {error, lists:concat(["ERROR ",CMDID," ",Juegoid])}
+                            {error, ocupado}  -> Psid ! {error, lists:concat(["ERROR ",CMDID," occupied ",Juegoid])};
+                            _ -> Psid ! {error, lists:concat(["ERROR ",CMDID," noExist ",Juegoid])}     
                         end;
         {error, Reason} -> Psid ! {error, lists:concat(["ERROR ",CMDID," ",Reason])}
     end;
-pcomando({acc, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
+pcomando({acc, _, _, Psid}) -> Psid ! {error, lists:concat(["ERROR ",acc, " badarg"])};
 
-%% Esperar a implementar el juego para ver que onda
 pcomando({pla, [CMDID, Juegoid, [JugadaS]], User, Psid}) ->
     if  
-        ((JugadaS > $9) or (JugadaS < $1)) and JugadaS /= $0 -> Psid !{error, lists : concat([ "ERROR ", CMDID, " JUEGO ", Juegoid, " JUGADA ", JugadaS ])};
+        ((JugadaS > $9) or (JugadaS < $1)) and JugadaS /= $0 -> Psid !{error, lists : concat([ "ERROR ", CMDID," invalid ", Juegoid," ", JugadaS])};
         true ->     Jugada = list_to_integer([JugadaS]),
                     case obtieneNodo(Juegoid) of
                         {ok, Nodo} ->
@@ -196,87 +183,119 @@ pcomando({pla, [CMDID, Juegoid, [JugadaS]], User, Psid}) ->
                             receive
                                 {User,_,_,sinjuego} -> case Jugada of
                                                         0 -> funcionMataJuego(Juegoid),Psid ! {ok,lists:concat(["OK ",CMDID, " ",Juegoid," ",Jugada])};
-                                                    true ->Psid ! {error,lists:concat(["ERROR ", CMDID, " ",Juegoid, " ", Jugada])}
-                                                    end;
+                                                        _ ->Psid ! {error,lists:concat(["ERROR ", CMDID, " noStarted ",Juegoid, " ", Jugada])}
+                                                       end;
                                 {User,Visitante,Espectadores,JuegoTateti} -> JuegoTateti ! {self(),local,Jugada}, 
                                                                             receive
-                                                                                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " ",Juegoid, " ", Jugada])};   
-                                                                                {Cond,Tablero}  -> TableroN = lists:concat([integer_to_list(L) || L <- Tablero]),broadcasterTablero([Visitante | Espectadores], {Cond,Tablero,Juegoid}), Psid ! {ok,lists:concat(["OK ",CMDID, " ",Juegoid," ",Cond, " ",Jugada, " ",TableroN])}
+                                                                                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " badTurn ",Juegoid, " ", Jugada])};   
+                                                                                {Cond,Tablero}  -> TableroN = lists:concat([integer_to_list(L) ++ "," || L <- Tablero]),broadcaster([Visitante | Espectadores], {Cond,Tablero,Juegoid},1), Psid ! {ok,lists:concat(["OK ",CMDID, " tablero ",Juegoid," ",Cond, " ",Jugada, " ",TableroN])}
                                                                             end;
                                 {Local,User,Espectadores,JuegoTateti} ->    JuegoTateti ! {self(),away,Jugada},
                                                                             receive
-                                                                                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " ",Juegoid, " ", Jugada])};
-                                                                                {Cond,Tablero}  -> TableroN = lists:concat([integer_to_list(L) || L <- Tablero]),broadcasterTablero([Local | Espectadores], {Cond,Tablero,Juegoid}), Psid ! {ok,lists:concat(["OK ",CMDID, " ",Juegoid, " ",Jugada," ",TableroN])}     
+                                                                                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " badTurn ",Juegoid, " ", Jugada])};
+                                                                                {Cond,Tablero}  -> TableroN = lists:concat([integer_to_list(L) ++ "," || L <- Tablero]),broadcaster([Local | Espectadores], {Cond,Tablero,Juegoid},1), Psid ! {ok,lists:concat(["OK ",CMDID, " tablero ",Juegoid," ",Cond," ",Jugada," ",TableroN])}     
                                                                             end;
-                                {_,nadie,_,_} -> Psid ! {error,lists:concat(["ERROR ", CMDID, " ",Juegoid, " ", Jugada])}; 
-                                _ ->Psid ! {error, lists:concat(["ERROR ",CMDID, " ",Juegoid, " ",Jugada])}
+                                {_,nadie,_,_} -> Psid ! {error,lists:concat(["ERROR ", CMDID, " noOpponent ",Juegoid, " ", Jugada])};
+                                empty -> Psid ! {error, lists:concat(["ERROR ",CMDID, " noExist ",Juegoid, " ",Jugada])}; 
+                                _ -> Psid ! {error, lists:concat(["ERROR ",CMDID, " unknown ",Juegoid, " ",Jugada])}
                             end;
                         {error, Reason} -> Psid ! {error, lists:concat(["ERROR ",CMDID," ",Reason])}
                     end
     end;
-pcomando({pla, [CMDID, Juegoid, Pla], _, Psid}) -> Psid !{error, lists : concat([ "ERROR ", CMDID, " JUEGO ", Juegoid, " JUGADA ", Pla ])};
-pcomando({pla, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
+pcomando({pla, [CMDID, Juegoid, Pla], _, Psid}) -> Psid !{error, lists : concat([ "ERROR ", CMDID," invalid ", Juegoid," ", Pla ])};
+pcomando({pla, _, _, Psid}) -> Psid ! {error, lists:concat(["ERROR ",pla, " badarg"])};
 
-pcomando({obs, [CMDID, Juegoid], User, Psid}) -> %% Si no nos da paja, ver de agregar el juego a observar en la lista de usuarios
+pcomando({obs, [CMDID, Juegoid], User, Psid}) ->
     case obtieneNodo(Juegoid) of
         {ok,Nodo} ->
             {juegos,Nodo} ! {obs, self(), {User, Juegoid}},
             receive
-                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " ", Juegoid])};
-                ok -> Psid ! {ok,lists:concat(["OK ", CMDID, " ", Juegoid])}
+                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " noExist ", Juegoid])};
+                ok -> Psid ! {ok,lists:concat(["OK ", CMDID, " obs ", Juegoid])}
             end;
         {error, Reason} -> Psid ! {error, lists:concat(["ERROR ",CMDID," ",Reason])}
     end;
-pcomando({obs, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
+pcomando({obs, _, _, Psid}) -> Psid ! {error, lists:concat(["ERROR ",obs, " badarg"])};
 
 pcomando({lea, [CMDID, Juegoid], User, Psid}) ->
     case obtieneNodo(Juegoid) of
         {ok, Nodo} ->
             {juegos,Nodo} ! {noObs, self(), {User, Juegoid}},
             receive
-                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " ", Juegoid])};
-                ok -> Psid ! {ok,lists:concat(["OK ", CMDID, " ", Juegoid])}
+                error -> Psid ! {error,lists:concat(["ERROR ", CMDID, " noExist ", Juegoid])};
+                ok -> Psid ! {ok,lists:concat(["OK ", CMDID, " lea ", Juegoid])}
             end;
         {error, Reason} -> Psid ! {error, lists:concat(["ERROR ",CMDID," ",Reason])}
     end;
-pcomando({lea, _, _, Psid}) -> Psid ! {error, "ERROR badargument"};
+pcomando({lea, _, _, Psid}) -> Psid ! {error, lists:concat(["ERROR ",lea, " badarg"])};
 
 pcomando({bye,User}) ->
-    %% Salir de observar:stand by me
     {ok,NodoPc} = obtieneNodo(User), %% No provoca badmatch porque User siempre es creado correctamente
     {usuarios,NodoPc} ! {obtener,User,self()},
     receive
         {_,Juegos} -> eliminarJugador(Juegos,User);
         error -> ok
     end,
+
     {usuarios,NodoPc} ! {bye,User}.
 
 %%Auxiliares  de lsg
-pedirListaJuegos(0,M) -> io:format("Ya pedi todos los mapas y son ~p~n",[M]),M;
+%%Dado un buzón de mensajes específicos, lo limpia
+pedirListaJuegos(0,M) -> M;
 pedirListaJuegos(N,M) ->
     receive
-        {listaPersonal,Mapa} -> io:format("Pidiendo mapa...~p~n",[N]),pedirListaJuegos(N-1,[Mapa|M]);
-        empty -> io:format("Era un nodo~p~n",[N]), pedirListaJuegos(N-1,M)
+        {listaPersonal,Mapa} -> pedirListaJuegos(N-1,[Mapa|M]);
+        empty -> pedirListaJuegos(N-1,M)
     end.
+
+%% Recibe una lista de "strings"
+%% Agrega coma al final de cada uno excepto del último
 comaAlfinal([]) -> [];
 comaAlfinal([X]) -> [X];
 comaAlfinal([X|Xs]) -> [(X ++ ",")|comaAlfinal(Xs)].
+
+%% Dada una lista de mapas, los formatea como strings
 parseoDeJuegos(Lista) ->
     ListaDeListas = [maps:to_list(X) || X <- Lista],
     Unidos = lists:concat(ListaDeListas),
     Stringueado = [lists:concat([A,"/",B,"/",C]) || {A,{B,C,_,_}} <- Unidos],
     lists:concat(comaAlfinal(Stringueado)).
 
-%% Dada una lista con id de juegos, busca en el mapa de juegos coincidencias y los reemplaza por un atomo 'abandono'
+%% Recibe una lista de juegos y un jugador que participa en esos juegos
+%% Comunica con el 'juegos' que almacena cada juego para decirle que el jugador se desconectó
 eliminarJugador([],_) -> ok;
 eliminarJugador([X|Xs],User) ->
-    [_,NodoPcS] = string:lexemes(X,"#"),
-    NodoPc = list_to_atom(NodoPcS),
+    {ok,NodoPc} = obtieneNodo(X),
     {juegos,NodoPc} ! {borrar,self(),{X,User}},
     receive
-        ok -> eliminarJugador(Xs,User);
+        {ok, Subs} -> broadcaster(Subs, {X},1),
+                      eliminarJugador(Xs,User);
+        {ok,exist,Subs,Player} -> receive
+                                    {Cond,Tablero} ->  broadcaster([Player | Subs], {Cond,Tablero,X},1), eliminarJugador(Xs,User)
+                                  end;
         error -> eliminarJugador(Xs,User)
     end.
+%% Envía a todos los procesos de la lista un mensaje
+%% [X|Xs] es una lista de jugadores
+broadcaster([],_,_) -> ok;
+broadcaster([X|Xs],{Juegoid},N) -> 
+    [_,NodoPcS] = string:lexemes(X,"#"),
+    NodoPc = list_to_atom(NodoPcS),
+    {usuarios,NodoPc} ! {obtener,X,self()},
+    receive
+        {Psid,_} -> Cmdid = lists:concat([N,"%",node()]) ,Psid ! {update, lists:concat(["UPD ",Cmdid," abandon ",Juegoid])};
+        error -> ok
+    end,
+    broadcaster(Xs,{Juegoid},N+1);
+broadcaster([X|Xs],{Cond,Tablero,Juegoid},N) -> 
+    [_,NodoPcS] = string:lexemes(X,"#"),
+    NodoPc = list_to_atom(NodoPcS),
+    {usuarios,NodoPc} ! {obtener,X,self()},
+    receive
+        {Psid,_} -> Cmdid = lists:concat([N,"%",node()]) ,TableroN = lists:concat([integer_to_list(L) ++ "," || L <- Tablero]),Psid ! {update, lists:concat(["UPD ",Cmdid," tablero ",Juegoid," ",Cond," ",TableroN])};
+        error -> ok
+    end,
+    broadcaster(Xs,{Cond,Tablero,Juegoid},N+1).
 %% ------------------ FIN ZONA PCOMANDO ----------------------------%%
 
 %% ------------------ ZONA MAPAS -----------------------------------%%
@@ -287,9 +306,12 @@ usuarios(MapaDeUsuarios) ->
         {Cartero, nuevo, User, Psid} ->
             case maps:find(User,MapaDeUsuarios) of 
                 error -> Mapa = maps:put(User, {Psid,[]}, MapaDeUsuarios),Cartero ! ok,usuarios(Mapa);
-                _ -> Cartero ! error,usuarios(MapaDeUsuarios)
+                _ -> Cartero ! error, usuarios(MapaDeUsuarios)
             end;
-        {acc,User,Juegoid,Cartero} -> {ok,{Psid,JuegosActuales}} = maps:find(User,MapaDeUsuarios), Mapa = maps:put(User, {Psid,[Juegoid | JuegosActuales]},MapaDeUsuarios),Cartero ! ok, usuarios(Mapa);
+        {acc,User,Juegoid,Cartero} -> case maps:find(User,MapaDeUsuarios) of 
+                                        {ok,{Psid,JuegosActuales}} -> Mapa = maps:put(User, {Psid,[Juegoid | JuegosActuales]},MapaDeUsuarios),Cartero ! ok, usuarios(Mapa);
+                                        error -> Cartero ! error, usuarios(MapaDeUsuarios)
+                                      end;
         {obtener,User,Cartero} ->   case maps:find(User, MapaDeUsuarios) of
                                             {ok, Tupla} -> Cartero ! Tupla, usuarios(MapaDeUsuarios);
                                             error -> Cartero ! error, usuarios(MapaDeUsuarios)
@@ -304,24 +326,28 @@ usuarios(MapaDeUsuarios) ->
 
 %% MapaDeJuegos es un mapa que tiene como clave Id#nodo@pc y como valor una tupla de {local,visitante,espectadores[],procesoDeJuego}
 %% ID: N#Nodo@PC, Local, Visitante, Suscritos, ProcesoDeJuego
+
+%% Versión para nodos trabajadores
 juegos(nodo,_) ->
     receive
-        {_,Cartero} -> Cartero ! empty
+        {_,Cartero} -> Cartero ! empty;
+        {_,Cartero,_} -> io:format("Esto es un trabajador~n"),Cartero ! empty
     end,
     juegos(nodo,0);
+%% Versión para servidores
 juegos(MapaDeJuegos, N) ->
     receive
       {nuevo,Cartero,{User}} ->
           Id = lists:concat([N,"#",atom_to_list(node())]),
           Mapa = maps:put(Id, {User, nadie, [],sinjuego}, MapaDeJuegos), 
-          Cartero ! {ok, N},
+          Cartero ! {ok, Id},
           juegos(Mapa, N + 1);
       {listaPersonal, Cmdid} -> Cmdid ! {listaPersonal,MapaDeJuegos}, juegos(MapaDeJuegos,N);
       {acc,Cartero,{User,Juegoid}} -> 
           case maps:find(Juegoid,MapaDeJuegos) of
               {ok, {Local, nadie ,Espectadores,sinjuego}} -> 
                   Mapa = maps:put(Juegoid, {Local,User,Espectadores,spawn(?MODULE,tateti,[?Newtab,0,1,Juegoid])},MapaDeJuegos), %% Cuando alguien acepta amrcamos el primer turno
-                  Cartero ! ok,
+                  Cartero ! {ok,Local},                  
                   juegos(Mapa, N);
               {ok, {_, _, _,_}} -> Cartero ! {error,ocupado}, juegos(MapaDeJuegos,N);
               error -> Cartero ! {error,noExiste}, juegos(MapaDeJuegos, N)
@@ -333,141 +359,39 @@ juegos(MapaDeJuegos, N) ->
       {obs,Cartero,{User,Juegoid}} -> 
           case maps:find(Juegoid,MapaDeJuegos) of 
             error -> Cartero ! error,juegos(MapaDeJuegos,N) ;
-            {ok,{Local,Visitante,Espectadores,JuegoTateti}} -> Mapa = maps:put(Juegoid, {Local,Visitante, [User] ++ Espectadores, JuegoTateti},MapaDeJuegos), Cartero ! ok,juegos(Mapa,N)    
+            {ok,{Local,Visitante,Espectadores,JuegoTateti}} -> Mapa = maps:put(Juegoid, {Local,Visitante, [User | Espectadores], JuegoTateti},MapaDeJuegos), Cartero ! ok,juegos(Mapa,N)
           end;
       {noObs, Cartero,{User,Juegoid}} ->
           case maps:find(Juegoid,MapaDeJuegos) of
             error -> Cartero ! error,juegos(MapaDeJuegos,N);
             {ok,{Local,Visitante,Espectadores,JuegoTateti}} -> Mapa = maps:put(Juegoid, {Local, Visitante, Espectadores -- [User],JuegoTateti},MapaDeJuegos), Cartero ! ok,juegos(Mapa,N)
           end;
-      {borrar,Cartero,{Juegoid,User}} -> 
+      {borrar,Cartero,{Juegoid,User}} ->
           case maps:find(Juegoid,MapaDeJuegos) of 
-            error -> Cartero ! error,juegos(MapaDeJuegos,N);
-            {ok,{User,_,_,JuegoTateti}} -> JuegoTateti ! {self(),local,bye}, Cartero ! ok,Mapa = maps:remove(Juegoid,MapaDeJuegos),juegos(Mapa,N);
-            {ok,{_,User,_,JuegoTateti}} -> JuegoTateti ! {self(),away,bye}, Cartero ! ok,Mapa = maps:remove(Juegoid,MapaDeJuegos),juegos(Mapa,N)    
+            error -> Cartero ! error, juegos(MapaDeJuegos,N);
+            {ok,{User,nadie,Subs,sinjuego}} -> Cartero ! {ok,Subs}, Mapa = maps:remove(Juegoid,MapaDeJuegos),juegos(Mapa,N);
+            {ok,{User,Visit,Subs,JuegoTateti}} -> Cartero ! {ok,exist,Subs,Visit}, JuegoTateti ! {Cartero,local,bye}, Mapa = maps:remove(Juegoid,MapaDeJuegos),juegos(Mapa,N);
+            {ok,{Local,User,Subs,JuegoTateti}} -> Cartero ! {ok,exist,Subs,Local}, JuegoTateti ! {Cartero,away,bye}, Mapa = maps:remove(Juegoid,MapaDeJuegos),juegos(Mapa,N)    
           end;
       {borrarJuego,_,{Juegoid}} -> Mapa = maps:remove(Juegoid,MapaDeJuegos),juegos(Mapa,N);
       _ -> juegos(MapaDeJuegos,N)
     end.
 %% ----------------- FIN ZONA MAPAS --------------------------------%%
 
-
-
-%% ------------------ ZONA JUEGO -----------------------------------%%
-checkGanador([A1,A2,A3,B1,B2,B3,C1,C2,C3]) ->
-    %% filas
-    F1 = A1 + A2 +A3, F2 = B1 + B2 + B3, F3 = C1 + C2 + C3,
-    %% columnas
-    Col1 = A1 + B1 + C1, Col2 = A2 + B2 + C2, Col3 = A3 + B3 + C3,
-    %% diagonales
-    Diag1 = A1 + B2 + C3, Diag2 = C1 + B2 + A3,
-    %% Hardcoded because why not, termina siendo O(1)
-    Max = lists:max([F1,F2,F3,Col1,Col2,Col3,Diag1,Diag2]),
-    Min = lists:min([F1,F2,F3,Col1,Col2,Col3,Diag1,Diag2]),
-    if 
-        %% Gano J1
-        Max == 3 -> w1; 
-        %% Gano J2
-        Min == -3 -> w2;
-        %% Nadie
-        true -> nada    
-    end.
-%% Me doy asco
-jugada([X|Xs],N,Turno) -> 
-    if
-        N == 1 ->  if
-                        X == 0 -> {ok,[Turno | Xs]};
-                        true   -> error
-                   end;
-        N > 1 -> case jugada(Xs,N-1,Turno) of
-                    {ok, TableroN} -> {ok, [X | TableroN]};
-                    error -> error
-                 end
-    end.
-
-%% Turno vale 1 o -1
-%% Pueden jugar local o away, 1 es local y -1 es away. Se identifican en el MapaDeJuegos
-%% Salame chequea que sea tu turno
-tateti(Tablero, Plays,Turno,Juegoid) ->
-    imprimeTablero(Tablero),
-    receive
-        {Cartero,local,bye} -> {Jugada,Jugador} = {abandon,w2};
-        {Cartero,away, bye} -> {Jugada,Jugador} = {abandon,w1};
-        {Cartero, Cond, Pos} -> {Jugada,Jugador} = {Pos, Cond}
-    end,
-    if 
-        (Jugada == 0)  and (Jugador == local)-> Cartero ! {w2,Tablero},funcionMataJuego(Juegoid);
-        (Jugada == 0)  and (Jugador == away)-> Cartero ! {w1,Tablero},funcionMataJuego(Juegoid);
-        Jugada == abandon -> Cartero ! {Jugador,Tablero}, funcionMataJuego(Juegoid);
-        (Jugador == local) and (Turno == -1) -> Cartero ! error, tateti(Tablero, Plays, Turno,Juegoid);
-        (Jugador == away) and (Turno == 1)   -> Cartero ! error, tateti(Tablero, Plays, Turno,Juegoid);
-        true -> case jugada(Tablero,Jugada,Turno) of
-                        {ok, TableroN} -> 
-                            K = Plays + 1,
-                            case checkGanador(TableroN) of
-                                w1 -> Cartero ! {w1,TableroN}, funcionMataJuego(Juegoid);
-                                w2 -> Cartero ! {w2,TableroN}, funcionMataJuego(Juegoid);
-                                nada -> if
-                                            K == 9 -> Cartero ! {empate,TableroN}, funcionMataJuego(Juegoid);
-                                            true -> Cartero ! {tablero,TableroN},tateti(TableroN,K,-Turno,Juegoid)
-                                        end
-                            end;
-                        error -> Cartero ! error, tateti(Tablero, Plays, Turno, Juegoid)
-                end
-    end.
-funcionMataJuego(Juegoid) ->
-    case obtieneNodo(Juegoid) of
-        {ok,NodoJuego} ->
-            {juegos, NodoJuego} ! {obtener, self(),{Juegoid}},
-            receive
-                {Local, Visitante, _, _} ->{ok,Nodo1} = obtieneNodo(Local),
-                                        {usuarios,Nodo1} ! {borrarJuego,Local,Juegoid},
-                                            case Visitante of
-                                                nadie -> ok;
-                                                _ -> {ok,Nodo2} = obtieneNodo(Visitante),
-                                                    {usuarios,Nodo2} ! {borrarJuego,Visitante, Juegoid}
-                                            end;
-                error -> ok
-            end,
-            {juegos, NodoJuego} ! {borrarJuego, self(), {Juegoid}};
-        {error,_} -> ok %% No debería entrar a esta zona porque siempre se llama con un JuegoId correcto
-    end.
-   
-%% Envía a todos los procesos de la lista un mensaje
-broadcasterTablero([],_) -> ok;
-%% Es una lista de jugadores
-broadcasterTablero([X|Xs],{Cond,Tablero,Juegoid}) -> 
-    [_,NodoPcS] = string:lexemes(X,"#"),
-    NodoPc = list_to_atom(NodoPcS),
-    {usuarios,NodoPc} ! {obtener,X,self()},
-    receive
-        {Psid,_} -> {_,{H,M,S}} = erlang:localtime(), TableroN = lists:concat([integer_to_list(L) || L <- Tablero]),Cmdid = lists:concat([H,":",M,":",S]),Psid ! {update, lists:concat(["UPD ",Cmdid," ",Juegoid," ",Cond,"/",TableroN])};
-        error -> ok
-    end,
-    broadcasterTablero(Xs,{Cond,Tablero,Juegoid}).
-
-imprimeTablero([A1,A2,A3,B1,B2,B3,C1,C2,C3]) ->
-    io:format("~p | ~p | ~p ~n",[A1,A2,A3]),
-    io:format("---------~n"),
-    io:format("~p | ~p | ~p ~n",[B1,B2,B3]),
-    io:format("---------~n"),
-    io:format("~p | ~p | ~p ~n",[C1,C2,C3]).
-%% ------------------ FIN ZONA JUEGO -------------------------------%%
-
 %% ------------------ ZONA PSTAT -----------------------------------%%
+%%Envía freceuntemente la run_queue del nodo a los 'pbalance' de cada nodo conectado
 pstat() ->
     X = erlang:statistics(run_queue),
     [{pbalance, Node} ! {stat, node(), X} || Node <- [node()|nodes()]], 
     timer:sleep(?Intervalo),
     pstat().
 
+%% Mantiene un mapa de nodos y su run_queue, envía el de menor carga si se lo piden
 pbalance(MapaNodos) ->
     receive
         {stat, Nodo, Val} -> NMap = maps:put(Nodo, Val, MapaNodos),
                              pbalance(NMap);
-        {best, PId} -> LNodos = maps:to_list(MapaNodos),
-                       Invert = [{B,A} || {A,B} <- LNodos],
-                       {_,Node} = lists:min(Invert), %se puede no dar vuelta, preguntar juanchi
+        {best, PId} -> {Node,_} = lists:nth(1, lists:keysort(2, maps:to_list(MapaNodos))),
                        PId ! {best, Node},
                        pbalance(MapaNodos)
     end.

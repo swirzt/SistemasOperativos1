@@ -1,0 +1,97 @@
+-module(cliente).
+-export([main/1,loopSend/1,loopRecv/1]).
+
+quitabarran([$\n | Xs]) -> Xs;
+quitabarran([C | Xs]) -> [C | quitabarran(Xs)].
+
+main(Puerto) ->
+    case gen_tcp:connect("localhost", Puerto, [{packet, 0}, {active,false}]) of
+        {ok,Socket} ->  io:format("Conexión exitosa!~n"),
+                        io:format("Bienvenido! Por favor ingrese su nombre: ~n"),
+                        Nombre = quitabarran(io:get_line("Nombre:")),
+                        registrarse(Nombre,Socket),
+                        io:format("Registrado exitosamente~n"),
+                        spawn(?MODULE,loopRecv,[Socket]),
+                        clienteBonito(Socket,1);
+        {error,Reason} -> io:format("No se pudo conectar por ~p ~n",[Reason])
+    end.
+
+registrarse(Nombre,Socket) ->
+    case gen_tcp:send(Socket, lists:concat(["CON ",Nombre])) of
+        ok -> case gen_tcp:recv(Socket,0) of
+                {ok,Data} -> [X|[Xs|Xss]] = string:lexemes(Data," "),
+                             case X of
+                                 "OK" -> ok;
+                                 "ERROR" -> case Xs of
+                                                "invalidchar" -> io:format("Nombre inválido, intente otro nombre~n"),Name = quitabarran(io:get_line("Nombre:")),registrarse(Name,Socket);
+                                                "usedname"    -> io:format("Nombre ya usado, intente otro nombre~n"),Name = quitabarran(io:get_line("Nombre:")),registrarse(Name,Socket);
+                                                "badarg"      -> io:format("Nombre inválido, intente otro nombre~n"),Name = quitabarran(io:get_line("Nombre:")),registrarse(Name,Socket)
+                                            end
+                             end;
+                {error,Reason} -> io:format("El registro falló por ~p, intentando otra vez... ~n",[Reason]),registrarse(Nombre,Socket)        
+              end;
+        {error,Reason} -> io:format("El registro falló por ~p, intentando otra vez... ~n",[Reason]),registrarse(Nombre,Socket)
+    end.
+
+
+
+
+clienteBonito(Socket,N) ->
+    io:format("Ingrese un número para seleccionar un comando, sus opciones son: ~n
+                1)Lista de juegos~n
+                2)Nuevo juego ~n
+                3)Aceptar un juego~n
+                4)Jugar una jugada~n
+                5)Observar un juego~n
+                6)Dejar de observar un juego~n
+                7)Cerrar la conexión~n"),
+    case quitabarran(io:get_line("Opción:")) of
+        "1" -> gen_tcp:send(Socket, lists:concat(["LSG ",N]));
+        "2" -> gen_tcp:send(Socket, lists:concat(["NEW ",N]));
+        "3" -> Juego = quitabarran(io:get_line("Juego:")),gen_tcp:send(Socket, lists:concat(["ACC ",N, " ",Juego]));
+        "4" -> Juego = quitabarran(io:get_line("Juego:")),Jugada = quitabarran(io:get_line("Jugada:")),gen_tcp:send(Socket, lists:concat(["PLA ",N, " ",Juego, " ",Jugada]));
+        "5" -> Juego = quitabarran(io:get_line("Juego:")),gen_tcp:send(Socket, lists:concat(["OBS ",N, " ",Juego]));
+        "6" -> Juego = quitabarran(io:get_line("Juego:")),gen_tcp:send(Socket, lists:concat(["LEA ",N, " ",Juego]));
+        "7" -> gen_tcp:send(Socket, lists:concat(["BYE"]));
+        _   -> io:format("Comando no existente, intente otra vez ~n")
+    end,
+    clienteBonito(Socket,N+1).
+
+loopSend(Socket) ->
+    Lectura = io:get_line("Enviar:"),
+    Sending = quitabarran(Lectura),
+    io:format("Quiero mandar ~p~n",[Sending]),
+    gen_tcp:send(Socket,Sending),
+    loopSend(Socket).
+
+loopRecv(Socket) ->
+    case gen_tcp:recv(Socket,0) of
+        {ok,Data} ->  
+			[X|[Xs|[Xss|Xsss]]] = string:lexemes(Data," "),
+                             case X of
+                                 "OK" -> ok;
+                                 "ERROR" -> case Xss of
+                                                "occupied"    -> io:format("Juego ocupado~n");
+                                                "badarg"      -> io:format("Argumentos inválidos~n");
+                                                "noExist"     -> io:format("Juego inexistente~n");
+                                                "alreadyReg"  -> io:format("Usuario ya registrado~n");
+                                                "badNode"     -> io:format("Servidor no existente~n");
+                                                "wrongFormat" -> io:format("Formato equivocado~n");
+                                                "invalid"     -> io:format("Jugada inválida~n");
+                                                "badTurn"     -> io:format("Turno equivocado~n");
+                                                "noStarted"   -> io:format("El juego no comenzó~n");
+                                                "noOpponent"  -> io:format("Juego sin oponente~n");
+                                                "unknown"     -> io:format("Error desconocido~n")
+                                            end;
+                                 "UPD" -> ok %%responder con ok y mostrar
+                             end;
+        {error,Reason} ->ok %%Chequear que pasa si se cae el servidor
+    end,
+    loopRecv(Socket).
+
+imprimeTablero([A1,A2,A3,B1,B2,B3,C1,C2,C3]) ->
+    io:format("~p | ~p | ~p ~n",[A1,A2,A3]),
+    io:format("---------~n"),
+    io:format("~p | ~p | ~p ~n",[B1,B2,B3]),
+    io:format("---------~n"),
+    io:format("~p | ~p | ~p ~n",[C1,C2,C3]).
