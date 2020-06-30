@@ -11,6 +11,14 @@
 6)Dejar de observar un juego~n
 7)Cerrar la conexión~n").
 
+to_tateti(K) ->
+    C = list_to_integer(K),
+    if
+        C == 1 -> "X";
+        C == -1 -> "O";
+        true -> " "
+    end.
+
 %%Elimina \n de una cadena
 quitabarran([$\n | Xs]) ->
     Xs;
@@ -213,9 +221,9 @@ loopRecv(Socket) ->
 
 %% Imprime en pantalla una lista formateada como tablero
 imprimeTablero([A1, A2, A3, B1, B2, B3, C1, C2, C3]) ->
-    io:format("~p | ~p | ~p ~n", [A1, A2, A3]),
+    io:format("~p | ~p | ~p ~n", [to_tateti(A1), to_tateti(A2), to_tateti(A3)]),
     io:format("---------------~n"),
-    io:format("~p | ~p | ~p ~n", [B1, B2, B3]),
+    io:format("~p | ~p | ~p ~n", [to_tateti(B1), to_tateti(B2), to_tateti(B3)]),
     io:format("---------------~n"),
-    io:format("~p | ~p | ~p ~n", [C1, C2, C3]).
+    io:format("~p | ~p | ~p ~n", [to_tateti(C1), to_tateti(C2), to_tateti(C3)]).
 
