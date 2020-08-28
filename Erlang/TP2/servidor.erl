@@ -11,12 +11,12 @@
 %% ------------------ ZONA DISPATCHER ------------------------------%%
 %% Inicia un nodo como servidor, con los procesos correspondientes
 dispatcher(servidor) ->
-    case gen_tcp:listen(?Puerto, [{packet, 0}, {active, false}]) of
+    case gen_tcp:listen(?Puerto, [{packet, 0}, {active, true}]) of
       {ok, LSocket} ->
           ok;
       {error, _} ->
           io:format("Puerto ocupado~n"),
-          {ok, LSocket} = gen_tcp:listen(0, [{packet, 0}, {active, false}])
+          {ok, LSocket} = gen_tcp:listen(0, [{packet, 0}, {active, true}])
     end,
     {_, Port} = inet:port(LSocket),
     io:format("Abierto en puerto ~p~n", [Port]),
@@ -47,8 +47,8 @@ escuchar(LSocket) ->
 %% Va a recibir un mensaje y actuar de acorde a eso
 %% Esta versión solamente puede recibir un comando de nuevo usuario o de salida
 psocket(Socket, noname) ->
-    case gen_tcp:recv(Socket, 0) of
-      {ok, Packet} ->
+    receive
+      {tcp, Socket, Packet} ->
           [X | Xs] = string:lexemes(Packet, " "),
           case X of
             "CON" ->
@@ -73,13 +73,13 @@ psocket(Socket, noname) ->
                 gen_tcp:send(Socket, "ERROR unregistered"),
                 psocket(Socket, noname)
           end;
-      {error, closed} ->
+      {tcp_closed, Socket} ->
           gen_tcp:close(Socket)
     end;
 %% Esta versión acepta todos los comandos
 psocket(Socket, User) ->
-    case gen_tcp:recv(Socket, 0, ?TIMEOUT) of
-      {ok, Packet} ->
+    receive
+      {tcp, Socket, Packet} ->
           [X | Xs] = string:lexemes(Packet, " "),
           pbalance ! {best, self()},
           receive
@@ -127,23 +127,20 @@ psocket(Socket, User) ->
                       psocket(Socket, User)
                 end
           end;
-      {error, closed} ->
+      {tcp_closed, Socket} ->
           pcomando({bye, User}),
           gen_tcp:close(Socket),
           io:format("~p -> se desconectó en ~p~n", [User, Socket]);
-      {error, timeout} ->
-          receive
-            {update, Data} ->
-                gen_tcp:send(Socket, Data),
-                psocket(Socket, User);
-            {_, Data} ->
-                gen_tcp:send(Socket, Data),
-                psocket(Socket, User);
-            _ ->
-                ok
-            after ?TIMEOUT ->
-                      psocket(Socket, User)
-          end;
+      {tcp_error, Socket, Reason} ->
+          pcomando({bye, User}),
+          gen_tcp:close(Socket),
+          io:format("~p -> el Socket ~p se cerró por ~p~n", [User, Socket, Reason]);
+      {update, Data} ->
+          gen_tcp:send(Socket, Data),
+          psocket(Socket, User);
+      {_, Data} ->
+          gen_tcp:send(Socket, Data),
+          psocket(Socket, User);
       _ ->
           psocket(Socket, User)
     end.
